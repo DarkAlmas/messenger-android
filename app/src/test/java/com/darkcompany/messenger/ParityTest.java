@@ -60,4 +60,21 @@ public class ParityTest {
         assertEquals(12, Updater.codeOf("12-native"));
         assertEquals(-1, Updater.codeOf("latest"));
     }
+    @Test public void seenAndDays() {
+        long now = java.time.ZonedDateTime.of(2026, 10, 20, 14, 0, 0, 0, java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+        assertEquals("в сети", Site.seenText(now - 30000, now));
+        assertEquals("был(а) 5 мин. назад", Site.seenText(now - 5 * 60000, now));
+        assertEquals("был(а) недавно", Site.seenText(0, now));
+        assertEquals("Сегодня", Site.dayLabel(now - 3600000, now));
+        assertEquals("Вчера", Site.dayLabel(now - 24 * 3600000L, now));
+        assertEquals("15 октября", Site.dayLabel(now - 5 * 24 * 3600000L, now));
+    }
+    @Test public void updateHosts() {
+        assertTrue(Updater.allowedHost("https://github.com/DarkAlmas/messenger-android/releases/download/v5/a.apk"));
+        assertTrue(Updater.allowedHost("https://release-assets.githubusercontent.com/x"));
+        assertTrue(Updater.allowedHost("https://objects.githubusercontent.com/x"));
+        assertFalse(Updater.allowedHost("http://github.com/x"));
+        assertFalse(Updater.allowedHost("https://github.com.evil.com/x"));
+        assertFalse(Updater.allowedHost("https://evil.com/github.com"));
+    }
 }

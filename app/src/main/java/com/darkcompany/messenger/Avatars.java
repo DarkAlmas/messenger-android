@@ -38,8 +38,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Свои буква/цвет/фото дублируются на устройстве (показ сразу, до ответа сервера).
  */
 final class Avatars {
-    static final int[] PALETTE = {0xFF3D5AFE, 0xFF7C4DFF, 0xFFE040FB, 0xFFFF4081, 0xFFFF5252, 0xFFFF6E40,
-            0xFFFFAB40, 0xFF00C853, 0xFF00BFA5, 0xFF00B8D4, 0xFF448AFF, 0xFF546E7A};
+    static final int[] PALETTE = {0xFF5C6BC0, 0xFF26A69A, 0xFFEF6C00, 0xFFAB47BC, 0xFF42A5F5, 0xFFEC407A, 0xFF7CB342, 0xFF8D6E63};
 
     /** Кэш профилей: id -> строка profiles (select=*), с отметкой времени. */
     static final Map<String, JSONObject> profiles = new ConcurrentHashMap<>();
@@ -73,7 +72,9 @@ final class Avatars {
     static int colorFor(JSONObject p, String seed) {
         String hex = p == null ? "" : p.optString("avatar_color", "");
         if (hex.matches("#[0-9A-Fa-f]{6}")) return Color.parseColor(hex);
-        return PALETTE[Math.abs((seed == null ? "" : seed).hashCode()) % PALETTE.length];
+        String id = seed == null ? "" : seed; int h = 0; // спецификация avatar_color.md: сумма кодов UTF-16 mod 8 — как на сайте
+        for (int i = 0; i < id.length(); i++) h += id.charAt(i);
+        return PALETTE[h % PALETTE.length];
     }
 
     static String letterFor(JSONObject p, String name) {
@@ -106,8 +107,7 @@ final class Avatars {
         GradientDrawable g = new GradientDrawable();
         g.setShape(GradientDrawable.OVAL);
         int col = colorFor(p, seed);
-        g.setColors(new int[]{lighten(col), col});
-        g.setOrientation(GradientDrawable.Orientation.TL_BR);
+        g.setColor(col); // сплошной цвет, как .ava на сайте
         a.setBackground(g);
         return a;
     }

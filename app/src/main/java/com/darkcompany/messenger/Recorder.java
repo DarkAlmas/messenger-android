@@ -1,20 +1,25 @@
 package com.darkcompany.messenger;
 
 import android.Manifest;
-import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.media.MediaRecorder;
 import android.os.Handler;
 import android.os.Looper;
-import android.provider.MediaStore;
 import android.view.MotionEvent;
+import android.widget.TextView;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.content.FileProvider;
-
-import com.google.android.material.button.MaterialButton;
+import androidx.camera.core.CameraSelector;
+import androidx.camera.core.Preview;
+import androidx.camera.lifecycle.ProcessCameraProvider;
+import androidx.camera.video.FileOutputOptions;
+import androidx.camera.video.Quality;
+import androidx.camera.video.QualitySelector;
+import androidx.camera.video.Recording;
+import androidx.camera.video.VideoCapture;
+import androidx.camera.video.VideoRecordEvent;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -25,46 +30,45 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Запись голосовых и кружков, как на сайте: удерживать кнопку — запись; свайп влево — отмена; свайп вверх — замок
- * (потом нажать ещё раз — отправить); короткое нажатие — переключение голос ⇄ кружок. Не дольше 60 с.
+ * Голосовые и кружки, как на сайте: удерживать — запись; свайп влево — отмена; свайп вверх — замок
+ * (потом «Отправить»); короткое нажатие — переключение 🎤 ⇄ кружок. Кружок — встроенный круглый видоискатель (CameraX). До 60 с.
  */
 final class Recorder {
     interface Sink { void send(byte[] data, String mime, String name, JSONObject media); }
+    interface Hooks { void start(String mode); void tick(long sec, boolean locked); void end(); androidx.camera.view.PreviewView preview(); }
     static final int MAX_REC = 60;
     private static final long HOLD_MS = 250;
     private final AppCompatActivity a;
-    private final MaterialButton btn;
+    private final TextView btn;
+    private final Hooks ui;
     private final Sink sink;
     private final Handler h = new Handler(Looper.getMainLooper());
-    private final ActivityResultLauncher<String> perm;
-    private final ActivityResultLauncher<android.net.Uri> video;
+    private final ActivityResultLauncher<String[]> perm;
     private String mode = "voice";
     private MediaRecorder mr;
-    private File out, roundFile;
+    private ProcessCameraProvider camProv;
+    private Recording rec;
+    private boolean active, locked, holding, sendOnStop;
+    private File out;
     private long t0;
-    private boolean locked, holding;
     private float x0, y0;
     private final List<Integer> wave = new ArrayList<>();
 
-    Recorder(AppCompatActivity a, MaterialButton btn, Sink sink) {
-        this.a = a; this.btn = btn; this.sink = sink;
-        perm = a.registerForActivityResult(new ActivityResultContracts.RequestPermission(), ok -> {
-            if (!ok) Ui.toast(a, "voice".equals(mode) ? "Нет доступа к микрофону — разрешите его в настройках" : "Нет доступа к камере — разрешите её в настройках");
+    Recorder(AppCompatActivity a, TextView btn, Hooks ui, Sink sink) {
+        this.a = a; this.btn = btn; this.ui = ui; this.sink = sink;
+        perm = a.registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), r -> {
+            if (r.containsValue(false)) Ui.toast(a, "voice".equals(mode) ? "Нет доступа к микрофону — разрешите его в настройках" : "Нет доступа к камере или микрофону — разрешите их в настройках");
         });
-        video = a.registerForActivityResult(new ActivityResultContracts.CaptureVideo(), ok -> onRound(Boolean.TRUE.equals(ok)));
         btn.setOnTouchListener((v, e) -> { onTouch(e); return true; });
     }
 
-    private final Runnable startHold = () -> {
-        holding = true;
-        if ("voice".equals(mode)) startVoice(); else startRound();
-    };
+    private final Runnable startHold = () -> { holding = true; begin(); };
     private final Runnable tick = new Runnable() {
         @Override public void run() {
-            if (mr == null) return;
+            if (!active) return;
             long s = (System.currentTimeMillis() - t0) / 1000;
-            try { wave.add(mr.getMaxAmplitude()); } catch (Exception ignored) { }
-            btn.setText((locked ? "➤ " : "● ") + Cache.fmtDur(s));
+            if (mr != null) try { wave.add(mr.getMaxAmplitude()); } catch (Exception ignored) { }
+            ui.tick(s, locked);
             if (s >= MAX_REC) { stop(true); return; }
             h.postDelayed(this, 100);
         }
@@ -74,32 +78,44 @@ final class Recorder {
         float dp = a.getResources().getDisplayMetrics().density;
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
-                if (mr != null && locked) { stop(true); return; } // замок: повторное нажатие — отправить
                 x0 = e.getRawX(); y0 = e.getRawY(); holding = false;
                 h.postDelayed(startHold, HOLD_MS);
                 break;
             case MotionEvent.ACTION_MOVE:
-                if (mr == null || locked) break;
-                if (e.getRawX() - x0 < -100 * dp) { stop(false); }
-                else if (e.getRawY() - y0 < -80 * dp) { locked = true; Ui.toast(a, "🔒 Запись закреплена. Нажмите ещё раз, чтобы отправить"); }
+                if (!active || locked) break;
+                if (e.getRawX() - x0 < -100 * dp) stop(false);
+                else if (e.getRawY() - y0 < -80 * dp) { locked = true; ui.tick((System.currentTimeMillis() - t0) / 1000, true); }
                 break;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
                 h.removeCallbacks(startHold);
                 if (!holding) { if (e.getActionMasked() == MotionEvent.ACTION_UP) toggle(); break; }
-                if (mr != null && !locked) stop(e.getActionMasked() == MotionEvent.ACTION_UP);
+                if (active && !locked) stop(e.getActionMasked() == MotionEvent.ACTION_UP);
                 break;
         }
     }
 
     private void toggle() {
         mode = "voice".equals(mode) ? "round" : "voice";
-        btn.setText("voice".equals(mode) ? "🎤" : "⭕");
-        btn.setContentDescription("voice".equals(mode) ? "Голосовое сообщение: удерживайте" : "Видеосообщение: удерживайте");
+        btn.setText("voice".equals(mode) ? "mic" : "radio_button_checked");
+        btn.setContentDescription("voice".equals(mode) ? "Голосовое сообщение" : "Видеосообщение");
     }
 
+    private boolean has(String p) { return a.checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED; }
+
+    private void begin() {
+        if ("voice".equals(mode)) {
+            if (!has(Manifest.permission.RECORD_AUDIO)) { holding = false; perm.launch(new String[]{Manifest.permission.RECORD_AUDIO}); return; }
+            startVoice();
+        } else {
+            if (!has(Manifest.permission.CAMERA) || !has(Manifest.permission.RECORD_AUDIO)) { holding = false; perm.launch(new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO}); return; }
+            startRound();
+        }
+    }
+
+    private void started() { active = true; locked = false; sendOnStop = false; wave.clear(); t0 = System.currentTimeMillis(); ui.start(mode); h.post(tick); }
+
     private void startVoice() {
-        if (a.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { holding = false; perm.launch(Manifest.permission.RECORD_AUDIO); return; }
         try {
             out = new File(ChatFiles.cacheDir(a), "voice_" + System.currentTimeMillis() + ".m4a");
             mr = new MediaRecorder(a);
@@ -111,71 +127,81 @@ final class Recorder {
             mr.setMaxDuration(MAX_REC * 1000 + 500);
             mr.setOutputFile(out.getAbsolutePath());
             mr.prepare(); mr.start();
-            t0 = System.currentTimeMillis(); locked = false; wave.clear();
-            h.post(tick);
-        } catch (Exception ex) {
-            release(); holding = false;
-            Ui.toast(a, "Не удалось включить микрофон: " + Ui.err(ex));
-        }
+            started();
+        } catch (Exception ex) { releaseMr(); holding = false; Ui.toast(a, "Не удалось включить микрофон: " + Ui.err(ex)); }
     }
 
-    /** Кружок: системная камера (фронтальная), лимит 60 с, качество пониже — до 25 МБ. */
+    @android.annotation.SuppressLint("MissingPermission")
     private void startRound() {
-        holding = false;
-        if (a.checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) { perm.launch(Manifest.permission.CAMERA); return; }
-        try {
-            roundFile = new File(ChatFiles.cacheDir(a), "round_" + System.currentTimeMillis() + ".mp4");
-            android.net.Uri u = FileProvider.getUriForFile(a, a.getPackageName() + ".files", roundFile);
-            Intent probe = new Intent(MediaStore.ACTION_VIDEO_CAPTURE);
-            if (probe.resolveActivity(a.getPackageManager()) == null) { Ui.toast(a, "На телефоне нет приложения камеры"); return; }
-            video.launch(u);
-        } catch (Exception ex) { Ui.toast(a, "Камера недоступна: " + Ui.err(ex)); }
-    }
-
-    private void onRound(boolean ok) {
-        File f = roundFile; roundFile = null;
-        if (f == null) return;
-        if (!ok || !f.exists() || f.length() == 0) { f.delete(); Ui.toast(a, "Запись отменена"); return; }
-        new Thread(() -> {
+        out = new File(ChatFiles.cacheDir(a), "round_" + System.currentTimeMillis() + ".mp4");
+        com.google.common.util.concurrent.ListenableFuture<ProcessCameraProvider> f = ProcessCameraProvider.getInstance(a);
+        f.addListener(() -> {
             try {
-                long ms = 0;
-                android.media.MediaMetadataRetriever r = new android.media.MediaMetadataRetriever();
-                try { r.setDataSource(f.getAbsolutePath()); String d = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION); ms = d == null ? 0 : Long.parseLong(d); }
-                finally { try { r.release(); } catch (Exception ignored) { } }
-                if (ms > (MAX_REC + 1) * 1000L) { Ui.toast(a, "Кружок длиннее 60 секунд — запишите короче"); return; }
-                if (f.length() > ChatFiles.MAX) { Ui.toast(a, "Запись больше 25 МБ"); return; }
-                byte[] data = read(f);
-                JSONObject media = new JSONObject().put("vk", "round").put("d", Math.max(1, Math.min(MAX_REC, Math.round(ms / 1000.0))));
-                sink.send(data, "video/mp4", f.getName(), media);
-            } catch (Exception ex) { Ui.toast(a, Ui.err(ex)); }
-            finally { f.delete(); }
-        }).start();
+                if (!holding) return; // кнопку уже отпустили
+                camProv = f.get();
+                Preview pv = new Preview.Builder().build();
+                pv.setSurfaceProvider(ui.preview().getSurfaceProvider());
+                androidx.camera.video.Recorder vr = new androidx.camera.video.Recorder.Builder()
+                        .setQualitySelector(QualitySelector.from(Quality.SD, androidx.camera.video.FallbackStrategy.lowerQualityOrHigherThan(Quality.SD)))
+                        .setTargetVideoEncodingBitRate(600_000).build();
+                VideoCapture<androidx.camera.video.Recorder> vc = VideoCapture.withOutput(vr);
+                camProv.unbindAll();
+                camProv.bindToLifecycle(a, CameraSelector.DEFAULT_FRONT_CAMERA, pv, vc);
+                started();
+                rec = vc.getOutput().prepareRecording(a, new FileOutputOptions.Builder(out).build()).withAudioEnabled()
+                        .start(androidx.core.content.ContextCompat.getMainExecutor(a), ev -> {
+                            if (ev instanceof VideoRecordEvent.Finalize) onRoundDone((VideoRecordEvent.Finalize) ev);
+                        });
+            } catch (Exception ex) { closeCam(); active = false; ui.end(); Ui.toast(a, "Камера недоступна: " + Ui.err(ex)); }
+        }, androidx.core.content.ContextCompat.getMainExecutor(a));
     }
 
-    void cancel() { h.removeCallbacks(startHold); if (mr != null) stop(false); }
+    private void onRoundDone(VideoRecordEvent.Finalize ev) {
+        long dur = System.currentTimeMillis() - t0;
+        closeCam();
+        File f = out; out = null;
+        if (f == null) return;
+        if (!sendOnStop) { f.delete(); return; }
+        if (ev.hasError() && ev.getError() != VideoRecordEvent.Finalize.ERROR_DURATION_LIMIT_REACHED) { f.delete(); Ui.toast(a, "Не удалось записать видеосообщение"); return; }
+        if (dur < 700) { f.delete(); Ui.toast(a, "Слишком короткая запись"); return; }
+        deliver(f, "round", "video/mp4", dur);
+    }
+
+    /** Кнопка «Отправить» в режиме замка. */
+    void sendLocked() { if (active) stop(true); }
+    void cancel() { h.removeCallbacks(startHold); holding = false; if (active) stop(false); else closeCam(); }
 
     private void stop(boolean send) {
         h.removeCallbacks(tick);
+        if (!active) return;
+        active = false; holding = false;
         long dur = System.currentTimeMillis() - t0;
+        ui.end();
+        if (!send) Ui.toast(a, "Запись отменена");
+        if (rec != null) { sendOnStop = send; Recording r = rec; rec = null; r.stop(); return; } // дальше — onRoundDone
         boolean ok = true;
         try { if (mr != null) mr.stop(); } catch (Exception ex) { ok = false; }
-        release();
-        locked = false; holding = false;
-        btn.setText("🎤");
+        releaseMr();
         File f = out; out = null;
         if (f == null) return;
-        if (!send) { f.delete(); Ui.toast(a, "Запись отменена"); return; }
+        if (!send) { f.delete(); return; }
         if (!ok || dur < 700) { f.delete(); Ui.toast(a, "Слишком короткая запись"); return; }
+        deliver(f, "voice", "audio/mp4", dur);
+    }
+
+    private void deliver(File f, String vk, String mime, long durMs) {
         try {
+            if (f.length() > ChatFiles.MAX) { Ui.toast(a, "Запись больше 25 МБ"); return; }
             byte[] data = read(f);
-            JSONObject media = new JSONObject().put("vk", "voice").put("d", Math.max(1, Math.min(MAX_REC, Math.round(dur / 1000.0))))
-                    .put("w", squash(wave, 40));
-            sink.send(data, "audio/mp4", f.getName(), media);
+            JSONObject media = new JSONObject().put("vk", vk).put("d", Math.max(1, Math.min(MAX_REC, Math.round(durMs / 1000.0))));
+            if ("voice".equals(vk)) media.put("w", squash(wave, 40));
+            sink.send(data, mime, f.getName(), media);
         } catch (Exception ex) { Ui.toast(a, Ui.err(ex)); }
         finally { f.delete(); }
     }
 
-    private void release() { if (mr != null) { try { mr.release(); } catch (Exception ignored) { } mr = null; } }
+    private void closeCam() { if (camProv != null) { try { camProv.unbindAll(); } catch (Exception ignored) { } camProv = null; } }
+    private void releaseMr() { if (mr != null) { try { mr.release(); } catch (Exception ignored) { } mr = null; } }
 
     /** Волна голосового: n столбиков 1..15, как squash на сайте. */
     static JSONArray squash(List<Integer> w, int n) {

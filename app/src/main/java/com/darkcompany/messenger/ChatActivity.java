@@ -48,6 +48,7 @@ public class ChatActivity extends AppCompatActivity {
     private final Runnable poll = new Runnable() {
         @Override public void run() {
             if (!running) return;
+            paintSub();
             fetch();
             h.postDelayed(this, rt != null && rt.isJoined() ? 30000 : 5000);
         }
@@ -72,10 +73,27 @@ public class ChatActivity extends AppCompatActivity {
         setTitle(getIntent().getStringExtra("title"));
         kind = getIntent().getStringExtra("kind");
         peerId = getIntent().getStringExtra("peer_id");
-        header();
-        if (peerId != null) io.execute(() -> { if (Avatars.refresh(this, java.util.Collections.singleton(peerId), 0)) runOnUiThread(this::header); });
+        android.widget.FrameLayout outer = new android.widget.FrameLayout(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(Site.surface(this));
+        // #chatHead: ← , аватар 40, имя + подзаголовок, ⋮
+        LinearLayout head = Site.bar(this);
+        head.addView(Site.iconButton(this, "arrow_back", "Назад к чатам", v -> finish()));
+        LinearLayout peer = new LinearLayout(this); peer.setGravity(Gravity.CENTER_VERTICAL);
+        avaBox = new android.widget.FrameLayout(this);
+        peer.addView(avaBox, new LinearLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40)));
+        LinearLayout titles = new LinearLayout(this); titles.setOrientation(LinearLayout.VERTICAL); titles.setPadding(Ui.dp(this, 12), 0, 0, 0);
+        titleV = Site.label(this, "", 17, Site.text(this), true); titleV.setSingleLine(true); titleV.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        subV = Site.label(this, "", 14, Site.text2(this), false); subV.setSingleLine(true);
+        titles.addView(titleV); titles.addView(subV);
+        peer.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
+        peer.setOnClickListener(v -> showPeer());
+        head.addView(peer, new LinearLayout.LayoutParams(0, -2, 1f));
+        head.addView(Site.iconButton(this, "more_vert", "Меню чата", this::chatMenu));
+        root.addView(head);
+        header();
+        if (peerId != null) io.execute(() -> { if (Avatars.refresh(this, java.util.Collections.singleton(peerId), 0)) runOnUiThread(this::header); });
         banner = Ui.text(this, "", 14);
         banner.setPadding(Ui.dp(this, 16), Ui.dp(this, 10), Ui.dp(this, 16), Ui.dp(this, 10));
         banner.setOnClickListener(v -> {
@@ -86,78 +104,116 @@ public class ChatActivity extends AppCompatActivity {
         updateBanner();
         checkE2e();
         scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
         box = Ui.column(this);
         scroll.addView(box);
+        scroll.setBackgroundColor(getColor(R.color.site_chatbg));
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
-        root.setBackgroundColor(Ui.attr(this, com.google.android.material.R.attr.colorSurfaceContainerLowest));
         box.setPadding(Ui.dp(this, 12), Ui.dp(this, 8), Ui.dp(this, 12), Ui.dp(this, 8));
-        LinearLayout bar = new LinearLayout(this);
-        bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(Ui.dp(this, 8), Ui.dp(this, 6), Ui.dp(this, 8), Ui.dp(this, 6));
-        bar.setBackgroundColor(Ui.attr(this, com.google.android.material.R.attr.colorSurfaceContainer));
-        final EditText in = Ui.input(this, "Сообщение");
-        Ui.pill(in); in.setSingleLine(false); in.setMaxLines(5);
-        in.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(4000)});
-        android.view.View send = Ui.sendButton(this);
-        com.google.android.material.button.MaterialButton attach = new com.google.android.material.button.MaterialButton(this, null, com.google.android.material.R.attr.materialIconButtonStyle);
-        attach.setText("📎");
-        attach.setTextSize(20);
-        attach.setPadding(0, 0, 0, 0);
-        attach.setInsetTop(0); attach.setInsetBottom(0);
-        attach.setContentDescription("Прикрепить файл");
-        attach.setOnClickListener(v -> picker.launch("*/*"));
-        bar.addView(attach, new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48)));
-        bar.addView(in, new LinearLayout.LayoutParams(0, -2, 1f));
-        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48)); slp.leftMargin = Ui.dp(this, 6);
-        final com.google.android.material.button.MaterialButton mic = new com.google.android.material.button.MaterialButton(this, null, com.google.android.material.R.attr.materialIconButtonStyle);
-        mic.setText("🎤"); mic.setTextSize(20); mic.setPadding(0, 0, 0, 0); mic.setInsetTop(0); mic.setInsetBottom(0);
-        mic.setContentDescription("Голосовое сообщение: удерживайте");
-        bar.addView(mic, new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48)));
-        bar.addView(send, slp);
-        replyBar = Ui.text(this, "", 13);
+        // #composeBar: ответ
+        replyBar = Ui.text(this, "", 14);
         replyBar.setMaxLines(2); replyBar.setEllipsize(android.text.TextUtils.TruncateAt.END);
         replyBar.setPadding(Ui.dp(this, 16), Ui.dp(this, 6), Ui.dp(this, 16), Ui.dp(this, 6));
-        replyBar.setBackgroundColor(Ui.attr(this, com.google.android.material.R.attr.colorSurfaceContainerHigh));
+        replyBar.setBackgroundColor(Site.surface(this)); replyBar.setTextColor(Site.text(this));
         replyBar.setVisibility(android.view.View.GONE);
         replyBar.setContentDescription("Отменить ответ");
         replyBar.setOnClickListener(v -> { replyTo = null; replyBar.setVisibility(android.view.View.GONE); });
         root.addView(replyBar, new LinearLayout.LayoutParams(-1, -2));
-        root.addView(bar, new LinearLayout.LayoutParams(-1, -2));
-        setContentView(root);
-        Ui.fitSystemBars(this, root); // edge-to-edge (Android 15+): не прятать контент под тулбаром/панелями
+        // .net-line
+        netLine = Site.label(this, "Отправится, когда появится сеть", 12, Site.text2(this), false);
+        netLine.setGravity(Gravity.CENTER); netLine.setBackgroundColor(Site.surface(this));
+        netLine.setPadding(Ui.dp(this, 14), Ui.dp(this, 3), Ui.dp(this, 14), Ui.dp(this, 3));
+        netLine.setVisibility(android.view.View.GONE);
+        root.addView(netLine, new LinearLayout.LayoutParams(-1, -2));
+        // #sendForm: 📎, поле-«пилюля», ➤ / 🎤
+        android.widget.FrameLayout barWrap = new android.widget.FrameLayout(this);
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(Ui.dp(this, 6), Ui.dp(this, 8), Ui.dp(this, 6), Ui.dp(this, 8));
+        barWrap.setBackgroundColor(Site.surface(this));
+        final EditText in = new EditText(this);
+        in.setHint("Сообщение"); in.setTextSize(16); in.setTextColor(Site.text(this)); in.setHintTextColor(Site.text2(this));
+        android.graphics.drawable.GradientDrawable ib = Site.round(Site.container(this), Ui.dp(this, 24)); ib.setStroke(Math.max(1, Ui.dp(this, 1)), getColor(R.color.site_divider));
+        in.setBackground(ib); in.setPadding(Ui.dp(this, 16), Ui.dp(this, 10), Ui.dp(this, 16), Ui.dp(this, 10));
+        in.setMinHeight(Ui.dp(this, 44)); in.setMaxLines(5);
+        in.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(4000)});
+        bar.addView(Site.iconButton(this, "attach_file", "Прикрепить файл", v -> picker.launch("*/*")));
+        LinearLayout.LayoutParams il = new LinearLayout.LayoutParams(0, -2, 1f); il.leftMargin = Ui.dp(this, 4); il.rightMargin = Ui.dp(this, 4);
+        bar.addView(in, il);
+        final android.widget.TextView send = Site.icon(this, "send", 20, 0xFFFFFFFF);
+        send.setBackground(Site.round(Site.primary(this), Ui.dp(this, 22)));
+        send.setContentDescription("Отправить"); send.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+        final android.widget.TextView mic = Site.iconButton(this, "mic", "Голосовое сообщение", null);
+        bar.addView(send, new LinearLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44)));
+        bar.addView(mic);
+        send.setVisibility(android.view.View.GONE);
+        in.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence x, int a1, int b1, int c1) { }
+            public void onTextChanged(CharSequence x, int a1, int b1, int c1) { }
+            public void afterTextChanged(android.text.Editable e) { boolean t = e.toString().trim().length() > 0; send.setVisibility(t ? android.view.View.VISIBLE : android.view.View.GONE); mic.setVisibility(t ? android.view.View.GONE : android.view.View.VISIBLE); }
+        });
+        barWrap.addView(bar, new android.widget.FrameLayout.LayoutParams(-1, -2));
+        // .rec-bar: ● 0:07  ‹ Отмена   🔒
+        recBar = new LinearLayout(this); recBar.setGravity(Gravity.CENTER_VERTICAL); recBar.setBackgroundColor(Site.surface(this));
+        recBar.setPadding(Ui.dp(this, 14), 0, Ui.dp(this, 56), 0);
+        android.view.View dot = new android.view.View(this); dot.setBackground(Site.round(getColor(R.color.site_danger), Ui.dp(this, 5)));
+        recBar.addView(dot, new LinearLayout.LayoutParams(Ui.dp(this, 10), Ui.dp(this, 10)));
+        recTime = Site.label(this, "0:00", 16, Site.text(this), false); recTime.setPadding(Ui.dp(this, 10), 0, Ui.dp(this, 10), 0);
+        recBar.addView(recTime);
+        recCancel = Site.label(this, "‹ Отмена", 16, Site.primary(this), false); recCancel.setGravity(Gravity.CENTER);
+        recBar.addView(recCancel, new LinearLayout.LayoutParams(0, -1, 1f));
+        recLock = Site.icon(this, "lock", 20, Site.text2(this));
+        recBar.addView(recLock, new LinearLayout.LayoutParams(Ui.dp(this, 32), -1));
+        recBar.setVisibility(android.view.View.GONE);
+        recBar.setClickable(true);
+        barWrap.addView(recBar, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        root.addView(barWrap, new LinearLayout.LayoutParams(-1, -2));
+        outer.addView(root, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        // .round-box: круглый видоискатель 240dp над полем ввода
+        roundBox = new RoundBox(this);
+        android.widget.FrameLayout.LayoutParams rl = new android.widget.FrameLayout.LayoutParams(Ui.dp(this, 240), Ui.dp(this, 240), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        rl.bottomMargin = Ui.dp(this, 90);
+        outer.addView(roundBox, rl);
+        roundBox.setVisibility(android.view.View.GONE);
+        setContentView(outer);
+        Ui.fitSystemBars(this, outer); // edge-to-edge (Android 15+)
         send.setOnClickListener(v -> {
             final String t = in.getText().toString().trim();
             if (t.isEmpty()) return;
             in.setText("");
             final String rt = replyTo;
             replyTo = null; replyBar.setVisibility(android.view.View.GONE);
-            io.execute(() -> {
-                try {
-                    Api api = Api.get(this);
-                    post(new JSONObject().put("v", 1).put("t", t), rt,
-                            new JSONObject().put("chat_id", chatId).put("sender_id", api.uid()).put("body", t));
-                    fetch();
-                } catch (Exception e) {
-                    Ui.toast(this, Ui.err(e));
-                    // Текст не теряется: возвращаем его в поле ввода (если там пусто)
-                    runOnUiThread(() -> { if (in.getText().length() == 0) { in.setText(t); in.setSelection(t.length()); } });
-                    if (e instanceof Api.AuthException) finish();
-                }
-            });
+            outSend(t, rt);
         });
         // Голосовые и кружки: удерживать — запись, влево — отмена, вверх — замок, короткое нажатие — голос/кружок
-        recorder = new Recorder(this, mic, (data, mime, name, media) -> sendMedia(data, name, mime, media));
+        recorder = new Recorder(this, mic, new Recorder.Hooks() {
+            @Override public void start(String mode) { recBar.setVisibility(android.view.View.VISIBLE); recTime.setText("0:00"); recCancel.setText("‹ Отмена"); recLock.setText("lock"); if ("round".equals(mode)) roundBox.setVisibility(android.view.View.VISIBLE); }
+            @Override public void tick(long sec, boolean locked) { recTime.setText(Cache.fmtDur(sec)); roundBox.setProgress(sec / (float) Recorder.MAX_REC); if (locked) { recCancel.setText("Отмена"); recLock.setText("send"); } }
+            @Override public void end() { recBar.setVisibility(android.view.View.GONE); roundBox.setVisibility(android.view.View.GONE); roundBox.setProgress(0); }
+            @Override public androidx.camera.view.PreviewView preview() { return roundBox.preview; }
+        }, (data, mime, name, media) -> sendMedia(data, name, mime, media));
+        recCancel.setOnClickListener(v -> recorder.cancel());
+        recLock.setOnClickListener(v -> recorder.sendLocked());
         // Офлайн-кэш: последние 100 сообщений видны сразу, даже без интернета
+        loadOutbox();
         JSONObject cached = Cache.chat(this, chatId);
-        if (cached != null) {
-            try {
+        try {
+            JSONArray cm = new JSONArray();
+            if (cached != null) {
                 JSONObject d = cached.optJSONObject("d");
                 if (d != null) for (java.util.Iterator<String> it = d.keys(); it.hasNext(); ) { String k = it.next(); dec.put(k, d.getJSONObject(k)); }
-                render(cached.getJSONArray("m"), new JSONArray(), new JSONArray());
-            } catch (Exception ignored) { }
-        }
+                cm = cached.getJSONArray("m");
+            }
+            render(cm, new JSONArray(), new JSONArray());
+        } catch (Exception ignored) { }
+        watchNetwork();
     }
+
+    private android.widget.FrameLayout avaBox;
+    private TextView titleV, subV, netLine, recTime, recCancel, recLock;
+    private LinearLayout recBar;
+    private RoundBox roundBox;
 
     @Override protected void onStart() {
         super.onStart(); if (chatId == null) return; running = true; openChat = chatId; Notify.cancel(this, chatId);
@@ -167,8 +223,15 @@ public class ChatActivity extends AppCompatActivity {
         rt.start();
         h.post(poll);
         h.post(keyWatch);
+        h.post(presence);
+        flushOutbox();
     }
-    @Override protected void onStop() { super.onStop(); if (chatId != null && chatId.equals(openChat)) openChat = null; if (recorder != null) recorder.cancel(); running = false; h.removeCallbacks(keyWatch); h.removeCallbacks(poll); h.removeCallbacks(rtFetch); if (rt != null) { rt.stop(); rt = null; } }
+    private final Runnable presence = new Runnable() { @Override public void run() {
+        if (!running) return;
+        io.execute(() -> { try { Api.get(ChatActivity.this).rpc("touch_presence", new JSONObject()); } catch (Exception ignored) { } loadLastSeen(); });
+        h.postDelayed(this, 60000);
+    } };
+    @Override protected void onStop() { super.onStop(); if (chatId != null && chatId.equals(openChat)) openChat = null; if (recorder != null) recorder.cancel(); running = false; h.removeCallbacks(keyWatch); h.removeCallbacks(presence); h.removeCallbacks(poll); h.removeCallbacks(rtFetch); if (rt != null) { rt.stop(); rt = null; } }
 
     private static final String[] EMOJI = {"👍", "❤️", "😂", "😮", "😢", "🔥"};
     private volatile String lastSig = null;
@@ -256,7 +319,7 @@ public class ChatActivity extends AppCompatActivity {
                 runOnUiThread(() -> render(fin, fr, frd));
             } catch (Exception e) {
                 if (e instanceof Api.AuthException) runOnUiThread(this::finish);
-                else if (System.currentTimeMillis() - lastFetchErr > 30000) { lastFetchErr = System.currentTimeMillis(); Ui.toast(this, "Не удалось загрузить сообщения: " + Ui.err(e)); }
+                else if (System.currentTimeMillis() - lastFetchErr > 30000) { lastFetchErr = System.currentTimeMillis(); toast("Не удалось загрузить сообщения: " + Ui.err(e)); }
             }
         });
     }
@@ -308,50 +371,79 @@ public class ChatActivity extends AppCompatActivity {
         byId.clear();
         for (int i = 0; i < arr.length(); i++) { JSONObject m = arr.optJSONObject(i); if (m != null) byId.put(m.optString("id"), m); }
         box.removeAllViews();
-        if (arr.length() >= limit) { // M1: старые сообщения не теряются — подгрузка порциями по 200
-            com.google.android.material.button.MaterialButton more = new com.google.android.material.button.MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle);
-            more.setText("Загрузить более ранние сообщения");
+        if (arr.length() >= limit) { // старые сообщения не теряются — подгрузка порциями по 200
+            TextView more = Site.label(this, "Загрузить более ранние сообщения", 14, Site.primary(this), true);
+            more.setGravity(Gravity.CENTER); more.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 10));
             more.setOnClickListener(v -> { limit += 200; keepScroll = true; lastSig = null; fetch(); });
-            box.addView(more);
+            box.addView(more, new LinearLayout.LayoutParams(-1, -2));
         }
-        boolean incoming = false;
-        for (int i = 0; i < arr.length(); i++) {
-            final JSONObject m = arr.optJSONObject(i);
-            if (m == null) continue;
+        // серверные сообщения + ещё не отправленные из очереди (как outBubble на сайте)
+        java.util.List<JSONObject> all = new java.util.ArrayList<>();
+        for (int i = 0; i < arr.length(); i++) { JSONObject m = arr.optJSONObject(i); if (m != null) all.add(m); }
+        synchronized (outbox) {
+            for (JSONObject j : outbox.values()) if (!byId.containsKey(j.optString("id"))) {
+                try {
+                    JSONObject m = new JSONObject().put("id", j.optString("id")).put("sender_id", me).put("created_at", j.optString("at"))
+                            .put("ciphertext", new JSONObject()).put("_job", j);
+                    if (j.has("rt")) m.put("reply_to", j.optString("rt"));
+                    dec.put(j.optString("id"), new JSONObject().put("v", 1).put("t", j.optString("text")));
+                    all.add(m);
+                } catch (Exception ignored) { }
+            }
+        }
+        long now = System.currentTimeMillis(), lastDay = -1;
+        if (all.isEmpty()) {
+            TextView es = Site.label(this, "Сообщений пока нет", 14, Site.text2(this), false);
+            es.setGravity(Gravity.CENTER); es.setPadding(0, Ui.dp(this, 40), 0, 0);
+            box.addView(es, new LinearLayout.LayoutParams(-1, -2));
+        }
+        for (int i = 0; i < all.size(); i++) {
+            final JSONObject m = all.get(i);
             final String id = m.optString("id");
             final boolean mine = me.equals(m.optString("sender_id"));
-            String who = mine ? null : (m.isNull("sender_id") ? "удалённый аккаунт" : names.getOrDefault(m.optString("sender_id"), "участник"));
+            final JSONObject job = m.optJSONObject("_job");
+            long at = Ui.instant(m.optString("created_at"));
+            if (Site.dayKey(at) != lastDay) { lastDay = Site.dayKey(at); box.addView(Site.dateSep(this, Site.dayLabel(at, now))); }
+            JSONObject next = i + 1 < all.size() ? all.get(i + 1) : null;
+            boolean tail = next == null || !m.optString("sender_id").equals(next.optString("sender_id")) || Site.dayKey(Ui.instant(next.optString("created_at"))) != lastDay;
+            String who = mine || !isGroup() ? null : (m.isNull("sender_id") ? "удалённый аккаунт" : names.getOrDefault(m.optString("sender_id"), "участник"));
             LinearLayout extra = new LinearLayout(this);
             extra.setOrientation(LinearLayout.VERTICAL);
-            if (!m.isNull("reply_to")) {
+            if (!m.isNull("reply_to") && m.has("reply_to")) {
                 JSONObject q = byId.get(m.optString("reply_to"));
-                TextView qt = Ui.text(this, "↪ " + (q == null ? "сообщение" : quoteOf(q, me)), 13);
+                TextView qt = Site.label(this, q == null ? "сообщение" : quoteOf(q, me), 14, mine ? 0xFFFFFFFF : Site.text(this), false);
                 qt.setMaxLines(2); qt.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                qt.setAlpha(0.8f);
-                qt.setPadding(Ui.dp(this, 8), Ui.dp(this, 2), 0, Ui.dp(this, 4));
-                extra.addView(qt);
+                android.graphics.drawable.GradientDrawable qb = Site.round(mine ? 0x26FFFFFF : 0x0F3D5AFE, Ui.dp(this, 6));
+                qt.setBackground(new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{qb}));
+                qt.setPadding(Ui.dp(this, 8), Ui.dp(this, 3), Ui.dp(this, 8), Ui.dp(this, 3));
+                LinearLayout qrow = new LinearLayout(this);
+                android.view.View line = new android.view.View(this); line.setBackgroundColor(mine ? 0xFFFFFFFF : Site.primary(this));
+                qrow.addView(line, new LinearLayout.LayoutParams(Ui.dp(this, 2), -1));
+                qrow.addView(qt);
+                LinearLayout.LayoutParams ql = new LinearLayout.LayoutParams(-2, -2); ql.topMargin = Ui.dp(this, 2); ql.bottomMargin = Ui.dp(this, 4);
+                extra.addView(qrow, ql);
             }
             final JSONObject pl = m.isNull("ciphertext") ? null : dec.get(id);
+            boolean media = false;
             if (pl != null && pl.optJSONObject("f") != null && ("voice".equals(pl.optJSONObject("f").optString("vk")) || "round".equals(pl.optJSONObject("f").optString("vk")))) {
-                extra.addView(MediaPlay.view(this, mine, pl.optJSONObject("f"), io));
+                extra.addView(MediaPlay.view(this, mine, pl.optJSONObject("f"), io)); media = true;
             } else if (pl != null && pl.optJSONObject("f") != null) {
                 final JSONObject f = pl.optJSONObject("f");
                 extra.addView(Ui.attachment(this, mine, f.optString("n", "file"), f.optLong("s", 0), v -> openE2eFile(f, !mine)));
-            } else if (!m.isNull("attachment_path")) {
+            } else if (!m.isNull("attachment_path") && m.has("attachment_path") && m.isNull("ciphertext")) {
                 final String ap = m.optString("attachment_path");
                 final String an = m.isNull("attachment_name") ? "file" : m.optString("attachment_name");
                 extra.addView(Ui.attachment(this, mine, an, m.optLong("attachment_size", 0), v -> openFile(ap, an, !mine)));
             }
-            if (!mine) incoming = true;
-            String bd = textOf(m);
-            String ts = Ui.time(m.optString("created_at", ""));
-            if (!m.isNull("edited_at") || (pl != null && pl.optInt("ed", 0) == 1)) ts = "изменено · " + ts;
-            if (!m.isNull("ciphertext")) ts = "🔒 " + ts;
-            else ts = PLAIN_MARK + " · " + ts; // открытый текст (сайт/старая версия): показываем, но с пометкой
+            String bd = media ? "" : textOf(m);
+            boolean edited = !m.isNull("edited_at") && m.has("edited_at") || (pl != null && pl.optInt("ed", 0) == 1);
             int tick = 0;
-            if (mine) { tick = tickState(Ui.instant(m.optString("created_at")), othersDlv, othersRead); ts += tick == 1 ? "  ✓" : "  ✓✓"; }
-            else if (lastIncoming == null || Ui.instant(m.optString("created_at")) > Ui.instant(lastIncoming)) lastIncoming = m.optString("created_at");
-            LinearLayout bubble = (LinearLayout) Ui.bubble(this, mine, who, bd, ts, extra.getChildCount() > 0 ? extra : null);
+            if (job != null) tick = job.optBoolean("failed") ? 5 : 4;
+            else if (mine) tick = tickState(at, othersDlv, othersRead);
+            else if (lastIncoming == null || at > Ui.instant(lastIncoming)) lastIncoming = m.optString("created_at");
+            String pre = m.isNull("ciphertext") ? PLAIN_MARK : null;
+            if (edited) pre = pre == null ? "изменено" : pre + " · изменено";
+            LinearLayout meta = Site.meta(this, mine, !m.isNull("ciphertext"), pre, Ui.time(m.optString("created_at", "")), tick);
             Map<String, int[]> em = rmap.get(id);
             if (em != null && !em.isEmpty()) {
                 StringBuilder sb = new StringBuilder();
@@ -360,15 +452,20 @@ public class ChatActivity extends AppCompatActivity {
                     sb.append(e.getKey()).append(e.getValue()[0] > 1 ? " " + e.getValue()[0] : "");
                     if (e.getValue()[1] == 1) sb.append("•");
                 }
-                TextView rv = Ui.text(this, sb.toString(), 14);
-                bubble.addView(rv, bubble.getChildCount() - 1);
+                TextView rv = Site.label(this, sb.toString(), 13, mine ? 0xFFFFFFFF : Site.text(this), false);
+                rv.setPadding(0, 0, Ui.dp(this, 8), 0);
+                meta.addView(rv, 0);
             }
-            if (tick == 3) colorTicks(bubble);
-            bubble.setOnLongClickListener(v -> { actions(m, mine, em); return true; });
+            LinearLayout bubble = Site.bubble(this, mine, who, bd, extra.getChildCount() > 0 ? extra : null, meta, tail);
+            if (job != null) {
+                if (job.optBoolean("failed")) bubble.setOnClickListener(v -> failedMenu(id));
+                bubble.setOnLongClickListener(v -> { failedMenu(id); return true; });
+            } else bubble.setOnLongClickListener(v -> { actions(m, mine, em); return true; });
             box.addView(bubble);
         }
-        if (arr.length() != lastCount) {
-            lastCount = arr.length();
+        int total = all.size();
+        if (total != lastCount) {
+            lastCount = total;
             if (keepScroll) { keepScroll = false; scroll.post(() -> scroll.scrollTo(0, 0)); }
             else scroll.post(() -> scroll.fullScroll(android.view.View.FOCUS_DOWN));
         }
@@ -380,9 +477,152 @@ public class ChatActivity extends AppCompatActivity {
 
     private void header() {
         String t = getIntent().getStringExtra("title");
-        Avatars.setHeader(this, "direct".equals(kind) ? peerId : null, t == null ? "Чат" : t,
-                isGroup() ? "🔒 группа · сквозное шифрование" : "🔒 сквозное шифрование", v -> showPeer());
+        if (peerId != null) { JSONObject p = Avatars.merged(this, peerId); String dn = p.isNull("display_name") ? "" : p.optString("display_name", "").trim(); if (!dn.isEmpty()) t = dn; }
+        if (t == null) t = "Чат";
+        titleV.setText(t);
+        avaBox.removeAllViews();
+        avaBox.addView("direct".equals(kind) && peerId != null ? Avatars.view(this, peerId, t, 40) : Avatars.render(this, null, t, chatId, 40, null),
+                new android.widget.FrameLayout.LayoutParams(-1, -1));
+        paintSub();
     }
+    private volatile long lastSeenAt = -1; // -1: неизвестно
+    private void paintSub() {
+        if (subV == null) return;
+        boolean conn = rt != null && rt.isJoined();
+        if (!online) { subV.setText("ожидание сети…"); subV.setTextColor(Site.text2(this)); return; }
+        if (!conn) { subV.setText("соединение…"); subV.setTextColor(Site.text2(this)); return; }
+        if (!"direct".equals(kind)) { subV.setText("группа"); subV.setTextColor(Site.text2(this)); return; }
+        String st = lastSeenAt < 0 ? "" : Site.seenText(lastSeenAt, System.currentTimeMillis());
+        subV.setText(st); subV.setTextColor("в сети".equals(st) ? Site.primary(this) : Site.text2(this));
+    }
+    private void loadLastSeen() {
+        if (!"direct".equals(kind) || peerId == null) return;
+        try {
+            String r = Api.get(this).rpc("get_last_seen", new JSONObject().put("p_user", peerId)).trim().replace("\"", "");
+            lastSeenAt = r.isEmpty() || r.equals("null") ? 0 : Ui.instant(r);
+        } catch (Exception ignored) { }
+        runOnUiThread(this::paintSub);
+    }
+    private void chatMenu(android.view.View anchor) {
+        android.widget.PopupMenu pm = new android.widget.PopupMenu(this, anchor);
+        if ("direct".equals(kind)) pm.getMenu().add(0, 1, 0, "Код безопасности");
+        if (isGroup()) pm.getMenu().add(0, 2, 1, "Покинуть группу");
+        pm.setOnMenuItemClickListener(this::onOptionsItemSelected);
+        pm.show();
+    }
+
+    // ---------- сеть и очередь отправки (как outbox на сайте) ----------
+    private volatile boolean online = true;
+    private android.net.ConnectivityManager.NetworkCallback netCb;
+    private void watchNetwork() {
+        android.net.ConnectivityManager cm = (android.net.ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+        if (cm == null) return;
+        online = cm.getActiveNetwork() != null;
+        netCb = new android.net.ConnectivityManager.NetworkCallback() {
+            @Override public void onAvailable(android.net.Network n) { online = true; h.post(() -> { paintSub(); paintNetLine(); flushOutbox(); }); }
+            @Override public void onLost(android.net.Network n) { android.net.ConnectivityManager c2 = (android.net.ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE); online = c2 != null && c2.getActiveNetwork() != null; h.post(() -> { paintSub(); paintNetLine(); }); }
+        };
+        try { cm.registerDefaultNetworkCallback(netCb); } catch (Exception ignored) { }
+    }
+    @Override protected void onDestroy() {
+        super.onDestroy();
+        android.net.ConnectivityManager cm = (android.net.ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+        if (cm != null && netCb != null) try { cm.unregisterNetworkCallback(netCb); } catch (Exception ignored) { }
+    }
+    /** id → {id, text, rt, at, failed}. Хранится на устройстве: переживает перезапуск приложения. */
+    private final Map<String, JSONObject> outbox = new java.util.LinkedHashMap<>();
+    private void loadOutbox() {
+        try { String s0 = Cache.get(this, "outbox_" + chatId.replaceAll("[^0-9a-f-]", "") + ".json"); if (s0 == null) return;
+            JSONArray a0 = new JSONArray(s0); synchronized (outbox) { for (int i = 0; i < a0.length(); i++) { JSONObject j = a0.getJSONObject(i); outbox.put(j.getString("id"), j); } }
+        } catch (Exception ignored) { }
+        h.post(this::paintNetLine);
+    }
+    private void saveOutbox() {
+        JSONArray a0 = new JSONArray(); synchronized (outbox) { for (JSONObject j : outbox.values()) a0.put(j); }
+        Cache.put(this, "outbox_" + chatId.replaceAll("[^0-9a-f-]", "") + ".json", a0.toString());
+        h.post(this::paintNetLine);
+    }
+    private void paintNetLine() {
+        if (netLine == null) return;
+        boolean waiting = false;
+        synchronized (outbox) { for (JSONObject j : outbox.values()) if (!j.optBoolean("failed")) waiting = true; }
+        netLine.setVisibility(waiting && !online ? android.view.View.VISIBLE : android.view.View.GONE);
+    }
+    private void outSend(String text, String rt) {
+        try {
+            JSONObject j = new JSONObject().put("id", java.util.UUID.randomUUID().toString()).put("text", text)
+                    .put("at", java.time.Instant.now().toString());
+            if (rt != null) j.put("rt", rt);
+            synchronized (outbox) { outbox.put(j.getString("id"), j); }
+            saveOutbox();
+            lastSig = null; fetchOrRender();
+            outRun(j);
+        } catch (Exception e) { toast(Ui.err(e)); }
+    }
+    private void fetchOrRender() { if (online) fetch(); else { JSONObject c0 = Cache.chat(this, chatId); try { render(c0 == null ? new JSONArray() : c0.getJSONArray("m"), new JSONArray(), new JSONArray()); } catch (Exception ignored) { } } }
+    private void flushOutbox() {
+        java.util.List<JSONObject> js = new java.util.ArrayList<>();
+        synchronized (outbox) { for (JSONObject j : outbox.values()) if (!j.optBoolean("failed")) js.add(j); }
+        for (JSONObject j : js) outRun(j);
+    }
+    private final Set<String> running0 = java.util.Collections.synchronizedSet(new HashSet<>());
+    /** Отправка из очереди: тот же id строки (повтор не создаёт дубль), без сети — ждём, ошибка — красный значок с «Повторить/Удалить». */
+    private void outRun(JSONObject j) {
+        final String id = j.optString("id");
+        if (!online || !running0.add(id)) { paintNetLine(); return; }
+        io.execute(() -> {
+            try {
+                Api api = Api.get(this);
+                boolean had = false;
+                if (j.optInt("tries", 0) > 0) { try { had = api.select("messages?select=id&id=eq." + id).length() > 0; } catch (Exception ignored) { } }
+                j.put("tries", j.optInt("tries", 0) + 1);
+                if (!had) {
+                    pendingId = id;
+                    try { post(new JSONObject().put("v", 1).put("t", j.optString("text")), j.has("rt") ? j.optString("rt") : null, null); }
+                    finally { pendingId = null; }
+                }
+                synchronized (outbox) { outbox.remove(id); }
+                saveOutbox();
+                lastSig = null; fetch();
+            } catch (Exception e) {
+                boolean net = !online || e instanceof java.io.IOException && !(e instanceof Api.HttpError);
+                if (!net) { try { j.put("failed", true); } catch (Exception ignored) { } toast(Ui.err(e)); }
+                saveOutbox();
+                lastSig = null; runOnUiThread(this::fetchOrRender);
+                if (e instanceof Api.AuthException) finish();
+            } finally { running0.remove(id); }
+        });
+    }
+    private void failedMenu(String id) {
+        JSONObject j; synchronized (outbox) { j = outbox.get(id); }
+        if (j == null) return;
+        new com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle("Сообщение не отправлено")
+                .setItems(new String[]{"Повторить", "Удалить"}, (d, w) -> {
+                    if (w == 0) { j.remove("failed"); saveOutbox(); lastSig = null; fetchOrRender(); if (!online) toast("Отправится, когда появится сеть"); outRun(j); }
+                    else { synchronized (outbox) { outbox.remove(id); } saveOutbox(); lastSig = null; fetchOrRender(); }
+                }).show();
+    }
+    private volatile String pendingId = null;
+
+    /** Тост над полем ввода на 3 секунды (как на сайте). Можно звать из любого потока. */
+    private TextView toastV;
+    void toast(String msg) {
+        runOnUiThread(() -> {
+            android.widget.FrameLayout outer = (android.widget.FrameLayout) roundBox.getParent();
+            if (toastV == null) {
+                toastV = Site.label(this, "", 14, 0xFFFFFFFF, false);
+                toastV.setBackground(Site.round(0xE6303036, Ui.dp(this, 12)));
+                toastV.setPadding(Ui.dp(this, 16), Ui.dp(this, 10), Ui.dp(this, 16), Ui.dp(this, 10));
+                toastV.setGravity(Gravity.CENTER);
+                android.widget.FrameLayout.LayoutParams tl = new android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+                tl.bottomMargin = Ui.dp(this, 76); tl.leftMargin = tl.rightMargin = Ui.dp(this, 16);
+                outer.addView(toastV, tl);
+            }
+            toastV.setText(msg); toastV.setVisibility(android.view.View.VISIBLE); toastV.bringToFront();
+            h.removeCallbacks(hideToast); h.postDelayed(hideToast, 3000);
+        });
+    }
+    private final Runnable hideToast = () -> { if (toastV != null) toastV.setVisibility(android.view.View.GONE); };
 
     private void showPeer() {
         if (peerId == null) return;
@@ -399,7 +639,7 @@ public class ChatActivity extends AppCompatActivity {
         if (!bio.isEmpty()) { TextView b = Ui.text(this, bio, 15); b.setGravity(Gravity.CENTER); c.addView(b, Ui.spaced(this)); }
         new com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setView(c)
                 .setPositiveButton("Закрыть", null)
-                .setNeutralButton("🔒 Код безопасности", (d, w) -> { if (e2e) showSafety(); else Ui.toast(this, "Шифрование ещё не готово"); }).show();
+                .setNeutralButton("🔒 Код безопасности", (d, w) -> { if (e2e) showSafety(); else toast("Шифрование ещё не готово"); }).show();
     }
 
     private String quoteOf(JSONObject q, String me) {
@@ -421,6 +661,7 @@ public class ChatActivity extends AppCompatActivity {
         if (!body.isEmpty()) items.add("Копировать");
         // Правка только зашифрованных (через RPC edit_message); открытый текст не правим — иначе он ушёл бы на сервер снова
         if (mine && !body.isEmpty() && !m.isNull("ciphertext") && e2e && ("direct".equals(kind) || isGroup())) items.add("Изменить");
+        if (mine) items.add("Удалить");
         new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
                 .setItems(items.toArray(new String[0]), (d, w) -> {
                     switch (items.get(w)) {
@@ -433,11 +674,29 @@ public class ChatActivity extends AppCompatActivity {
                         case "Копировать":
                             android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                             if (cm != null) cm.setPrimaryClip(android.content.ClipData.newPlainText("msg", body));
-                            Ui.toast(this, "Скопировано");
+                            toast("Скопировано");
                             break;
                         case "Изменить": edit(id, body); break;
+                        case "Удалить": confirmDelete(m); break;
                     }
                 }).show();
+    }
+
+    /** Удаление у всех (автор, RLS messages delete own) и удаление вложения по attachment_path — как deleteMsg на сайте. */
+    private void confirmDelete(JSONObject m) {
+        final String id = m.optString("id");
+        JSONObject pl = dec.get(id); JSONObject f = pl == null ? null : pl.optJSONObject("f");
+        final String ap = f != null && f.has("p") ? f.optString("p") : (m.isNull("attachment_path") ? null : m.optString("attachment_path"));
+        new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                .setMessage("Удалить сообщение у всех участников чата? Отменить будет нельзя.")
+                .setPositiveButton("Удалить", (d, w) -> io.execute(() -> {
+                    try {
+                        Api api = Api.get(this);
+                        api.delete("messages?id=eq." + id);
+                        if (ap != null && ap.startsWith("chat/" + chatId + "/")) ChatFiles.remove(ap, api.freshToken());
+                        dec.remove(id); lastSig = null; toast("Сообщение удалено"); fetch();
+                    } catch (Exception e) { toast(Ui.err(e)); }
+                })).setNegativeButton("Отмена", null).show();
     }
 
     private void pickReaction(String id, Map<String, int[]> em) {
@@ -452,7 +711,7 @@ public class ChatActivity extends AppCompatActivity {
                             else api.insert("reactions", new JSONObject().put("message_id", id).put("user_id", api.uid()).put("emoji", e));
                             fetch();
                         } catch (Exception ex) {
-                            Ui.toast(this, ex instanceof Api.HttpError && ((Api.HttpError) ex).code == 403 ? "Не больше 10 реакций на сообщение" : Ui.err(ex));
+                            toast(ex instanceof Api.HttpError && ((Api.HttpError) ex).code == 403 ? "Не больше 10 реакций на сообщение" : Ui.err(ex));
                             if (ex instanceof Api.AuthException) runOnUiThread(this::finish);
                         }
                     });
@@ -469,7 +728,7 @@ public class ChatActivity extends AppCompatActivity {
                     if (t.isEmpty() || t.equals(body)) return;
                     io.execute(() -> {
                         try { editEncrypted(id, new JSONObject().put("v", 1).put("t", t).put("ed", 1)); fetch(); }
-                        catch (Exception e) { Ui.toast(this, Ui.err(e)); if (e instanceof Api.AuthException) runOnUiThread(this::finish); }
+                        catch (Exception e) { toast(Ui.err(e)); if (e instanceof Api.AuthException) runOnUiThread(this::finish); }
                     });
                 }).setNegativeButton("Отмена", null).show();
     }
@@ -524,7 +783,8 @@ public class ChatActivity extends AppCompatActivity {
             JSONObject row = new JSONObject().put("chat_id", chatId).put("sender_id", api.uid()).put("body", "").put("ciphertext", ct);
             if (rt != null) row.put("reply_to", rt);
             if (pendingAttachment != null) row.put("attachment_path", pendingAttachment);
-            String id = api.insertReturningId("messages", row); // id выдаёт сервер
+            if (pendingId != null) row.put("id", pendingId); // id задаёт клиент (как на сайте): повтор не создаёт дубль
+            String id = api.insertReturningId("messages", row);
             c.rememberOwn(id, payload.toString());
             dec.put(id, payload);
         } else {
@@ -568,6 +828,7 @@ public class ChatActivity extends AppCompatActivity {
                     row.put("chat_id", chatId).put("sender_id", api.uid()).put("body", "");
                     if (rt != null) row.put("reply_to", rt);
                     if (pendingAttachment != null) row.put("attachment_path", pendingAttachment);
+                    if (pendingId != null) row.put("id", pendingId);
                     id = api.insertReturningId("messages", row);
                 }
                 g.rememberOwn(id, ct.getString("sk"), payload.toString());
@@ -672,7 +933,7 @@ public class ChatActivity extends AppCompatActivity {
             new com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle("Покинуть группу?")
                     .setPositiveButton("Покинуть", (d, w) -> io.execute(() -> {
                         try { Api.get(this).rpc("leave_chat", new JSONObject().put("p_chat", chatId)); runOnUiThread(this::finish); }
-                        catch (Exception e) { Ui.toast(this, Ui.err(e)); }
+                        catch (Exception e) { toast(Ui.err(e)); }
                     })).setNegativeButton("Отмена", null).show();
             return true;
         }
@@ -720,7 +981,7 @@ public class ChatActivity extends AppCompatActivity {
                     if (E2e.get(this).hasPendingChange(peerId)) bd.setNeutralButton("Принять новый ключ", (dd, w) -> confirmAccept());
                     bd.show();
                 });
-            } catch (Exception e) { Ui.toast(this, "Код безопасности недоступен: " + Ui.err(e)); }
+            } catch (Exception e) { toast("Код безопасности недоступен: " + Ui.err(e)); }
         }, "safety").start();
     }
 
@@ -751,7 +1012,7 @@ public class ChatActivity extends AppCompatActivity {
     private void openE2eFile(JSONObject f, boolean fromOther) {
         final String name = ChatFiles.safeName(f.optString("n", "file"));
         Runnable go = () -> {
-            Ui.toast(this, "Загружаю и расшифровываю файл…");
+            toast("Загружаю и расшифровываю файл…");
             io.execute(() -> {
                 java.io.File enc = null;
                 try {
@@ -763,10 +1024,10 @@ public class ChatActivity extends AppCompatActivity {
                     try (java.io.FileOutputStream fo = new java.io.FileOutputStream(out)) { fo.write(plain); }
                     runOnUiThread(() -> {
                         try { ChatFiles.open(this, out, name); }
-                        catch (Exception e) { Ui.toast(this, "Нет приложения для открытия файла"); }
+                        catch (Exception e) { toast("Нет приложения для открытия файла"); }
                     });
                 } catch (Exception e) {
-                    Ui.toast(this, Ui.err(e));
+                    toast(Ui.err(e));
                     if (e instanceof Api.AuthException) runOnUiThread(this::finish);
                 } finally { if (enc != null) enc.delete(); }
             });
@@ -811,10 +1072,10 @@ public class ChatActivity extends AppCompatActivity {
 
     /** Отправка записанного голосового/кружка: AES-256-GCM, chat/<chat>/<uuid>_file.bin, octet-stream; vk/d/w — внутри шифротекста. */
     private void sendMedia(byte[] plain, String name, String mime, JSONObject media) {
-        Ui.toast(this, "voice".equals(media.optString("vk")) ? "Отправляю голосовое…" : "Отправляю видеосообщение…");
+        toast("voice".equals(media.optString("vk")) ? "Отправляю голосовое…" : "Отправляю видеосообщение…");
         io.execute(() -> {
             try { encryptAndSend(plain, name, mime, media); fetch(); }
-            catch (Exception e) { Ui.toast(this, Ui.err(e)); if (e instanceof Api.AuthException) finish(); }
+            catch (Exception e) { toast(Ui.err(e)); if (e instanceof Api.AuthException) finish(); }
         });
     }
     /** Общая отправка файла (как sendFile на сайте). При ошибке вставки сообщения загруженный объект удаляется. */
@@ -866,11 +1127,11 @@ public class ChatActivity extends AppCompatActivity {
                 if (si >= 0 && !c.isNull(si)) size = c.getLong(si);
             }
         } catch (Exception ignored) { }
-        if (size > ChatFiles.MAX) { Ui.toast(this, "Файл больше 25 МБ"); return; }
+        if (size > ChatFiles.MAX) { toast("Файл больше 25 МБ"); return; }
         final String fname = ChatFiles.safeName(name);
         final long fsize = size;
         final String mime = getContentResolver().getType(uri);
-        Ui.toast(this, "Отправляю «" + fname + "»…");
+        toast("Отправляю «" + fname + "»…");
         io.execute(() -> {
             java.io.File tmp = null;
             try {
@@ -889,7 +1150,7 @@ public class ChatActivity extends AppCompatActivity {
                 encryptAndSend(plain, fname, mime, null);
                 fetch();
             } catch (Exception e) {
-                Ui.toast(this, Ui.err(e));
+                toast(Ui.err(e));
                 if (e instanceof Api.AuthException) finish();
             } finally {
                 if (tmp != null) tmp.delete();
@@ -908,16 +1169,16 @@ public class ChatActivity extends AppCompatActivity {
     }
 
     private void doOpen(String path, String name) {
-        Ui.toast(this, "Загружаю файл…");
+        toast("Загружаю файл…");
         io.execute(() -> {
             try {
                 java.io.File f = ChatFiles.download(this, path, Api.get(this).freshToken());
                 runOnUiThread(() -> {
                     try { ChatFiles.open(this, f, name); }
-                    catch (Exception e) { Ui.toast(this, "Нет приложения для открытия файла"); }
+                    catch (Exception e) { toast("Нет приложения для открытия файла"); }
                 });
             } catch (Exception e) {
-                Ui.toast(this, Ui.err(e));
+                toast(Ui.err(e));
                 if (e instanceof Api.AuthException) runOnUiThread(this::finish);
             }
         });

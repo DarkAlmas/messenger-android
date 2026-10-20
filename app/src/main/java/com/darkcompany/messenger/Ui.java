@@ -209,7 +209,7 @@ final class Ui {
         if (o.isNull("last_at")) last = "Нет сообщений";
         else {
             String b = o.isNull("last_body") ? "" : o.optString("last_body", "");
-            last = !o.optBoolean("last_has_file") && b.trim().isEmpty() && !o.isNull("last_at") ? "🔒 Зашифрованное сообщение" :
+            last = !o.optBoolean("last_has_file") && b.trim().isEmpty() && !o.isNull("last_at") ? "🔒 зашифрованное сообщение" :
                     o.optBoolean("last_has_file") && b.trim().isEmpty() ? "📎 Файл" : (o.optBoolean("last_has_file") ? "📎 " : "") + b.replace('\n', ' ');
             // Шифрованные сообщения (личные и групповые) хранятся с пустым body; непустой body = открытый текст (сайт/старая версия)
             if (!b.trim().isEmpty()) last = "⚠ не зашифровано: " + last;

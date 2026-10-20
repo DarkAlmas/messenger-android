@@ -7,6 +7,7 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
+import android.widget.LinearLayout;
 
 import androidx.activity.result.ActivityResultLauncher;
 
@@ -46,8 +47,6 @@ public class ChatsActivity extends AppCompatActivity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         if (!Api.get(this).hasSession()) { startActivity(new Intent(this, LoginActivity.class)); finish(); return; }
-        setTitle("Чаты");
-        if (getSupportActionBar() != null) getSupportActionBar().setSubtitle("сборка " + BuildConfig.BUILD_TIME);
         io.execute(() -> ChatFiles.cleanup(this));
         keysIo.execute(() -> keysCheck(true)); // ключи E2E для этого устройства
         ListView list = new ListView(this);
@@ -74,25 +73,67 @@ public class ChatsActivity extends AppCompatActivity {
             startActivity(i);
         });
         list.setDivider(null);
-        list.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 88));
+        list.setPadding(0, 0, 0, Ui.dp(this, 8));
         list.setClipToPadding(false);
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(Site.surface(this));
+        // .bar: аватар и имя (→ профиль), справа меню
+        LinearLayout top = Site.bar(this);
+        String myId = Api.get(this).uid();
+        JSONObject meP = Avatars.merged(this, myId);
+        String myName = meP.isNull("display_name") || meP.optString("display_name").isEmpty() ? meP.optString("username", "") : meP.optString("display_name");
+        LinearLayout meBtn = new LinearLayout(this); meBtn.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        meBtn.addView(Avatars.view(this, myId, myName, 40), new LinearLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40)));
+        meName = Site.label(this, myName, 16, Site.text(this), true); meName.setPadding(Ui.dp(this, 12), 0, 0, 0);
+        meBtn.addView(meName);
+        meBtn.setOnClickListener(v -> startActivity(new Intent(this, ProfileActivity.class)));
+        meBtn.setPadding(Ui.dp(this, 4), 0, 0, 0);
+        top.addView(meBtn, new LinearLayout.LayoutParams(0, -2, 1f));
+        top.addView(Site.iconButton(this, "more_vert", "Меню", this::moreMenu));
+        root.addView(top);
+        // «Чаты ( ◌ Соединение… )»
+        LinearLayout tr = new LinearLayout(this); tr.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        tr.setPadding(Ui.dp(this, 16), Ui.dp(this, 12), Ui.dp(this, 16), Ui.dp(this, 4));
+        tr.addView(Site.label(this, "Чаты", 20, Site.text(this), true));
+        connRow = new LinearLayout(this); connRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        connRow.addView(Site.label(this, " (", 16, Site.text2(this), false));
+        connRow.addView(Site.spinner(this));
+        connTxt = Site.label(this, "Соединение…", 16, Site.text2(this), false); connTxt.setPadding(Ui.dp(this, 4), 0, 0, 0);
+        connRow.addView(connTxt);
+        connRow.addView(Site.label(this, " )", 16, Site.text2(this), false));
+        tr.addView(connRow);
+        root.addView(tr);
+        // поиск собеседника + «Написать»
+        LinearLayout find = new LinearLayout(this); find.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        find.setPadding(Ui.dp(this, 12), Ui.dp(this, 10), Ui.dp(this, 12), Ui.dp(this, 10));
+        final android.widget.EditText findIn = new android.widget.EditText(this);
+        findIn.setHint("Никнейм собеседника (@nick)"); findIn.setSingleLine(true); findIn.setTextSize(16);
+        findIn.setTextColor(Site.text(this)); findIn.setHintTextColor(Site.text2(this));
+        android.graphics.drawable.GradientDrawable fb = Site.round(Site.container(this), Ui.dp(this, 14)); fb.setStroke(Math.max(1, Ui.dp(this, 1)), getColor(R.color.site_divider));
+        findIn.setBackground(fb); findIn.setPadding(Ui.dp(this, 14), 0, Ui.dp(this, 14), 0);
+        findIn.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_GO);
+        find.addView(findIn, new LinearLayout.LayoutParams(0, Ui.dp(this, 52), 1f));
+        android.widget.TextView go = Site.label(this, "Написать", 16, getColor(android.R.color.white), true);
+        go.setGravity(android.view.Gravity.CENTER); go.setBackground(Site.round(Site.primary(this), Ui.dp(this, 26)));
+        go.setPadding(Ui.dp(this, 18), 0, Ui.dp(this, 18), 0);
+        Runnable doFind = () -> { String n = findIn.getText().toString(); findIn.setText(""); createDirect(n); };
+        go.setOnClickListener(v -> doFind.run());
+        findIn.setOnEditorActionListener((v, id, e) -> { doFind.run(); return true; });
+        LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(-2, Ui.dp(this, 52)); gl.leftMargin = Ui.dp(this, 10);
+        find.addView(go, gl);
+        root.addView(find);
         android.widget.FrameLayout frame = new android.widget.FrameLayout(this);
         frame.addView(list);
-        empty = Ui.text(this, "Пока нет чатов.\nНажмите «Новый чат», чтобы начать переписку.", 16);
+        empty = Ui.text(this, "Загрузка чатов…", 16);
         empty.setGravity(android.view.Gravity.CENTER);
-        empty.setTextColor(Ui.gray());
+        empty.setTextColor(Site.text2(this));
         empty.setPadding(Ui.dp(this, 32), 0, Ui.dp(this, 32), 0);
-        empty.setText("Загрузка чатов…"); // экран никогда не остаётся пустым без объяснения
         frame.addView(empty, new android.widget.FrameLayout.LayoutParams(-1, -1));
-        com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton fab = new com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton(this);
-        fab.setText("Новый чат");
-        fab.setIconResource(android.R.drawable.ic_input_add);
-        fab.setOnClickListener(v -> newChat());
-        android.widget.FrameLayout.LayoutParams flp = new android.widget.FrameLayout.LayoutParams(-2, -2, android.view.Gravity.BOTTOM | android.view.Gravity.END);
-        flp.setMargins(0, 0, Ui.dp(this, 16), Ui.dp(this, 16));
-        frame.addView(fab, flp);
-        setContentView(frame);
-        Ui.fitSystemBars(this, frame); // edge-to-edge (Android 15+): не прятать контент под тулбаром/панелями
+        root.addView(frame, new LinearLayout.LayoutParams(-1, 0, 1f));
+        root.addView(Site.bottomNav(this, 0), new LinearLayout.LayoutParams(-1, Ui.dp(this, 56)));
+        setContentView(root);
+        Ui.fitSystemBars(this, root); // edge-to-edge (Android 15+): не прятать контент под тулбаром/панелями
         // Офлайн-кэш: старые чаты видны сразу, даже без интернета
         JSONArray cached = Cache.chats(this);
         if (cached != null) { try { applyChats(cached); } catch (Exception ignored) { } }
@@ -122,7 +163,12 @@ public class ChatsActivity extends AppCompatActivity {
     static String titleFor(boolean online, boolean connected) {
         return !online ? "Чаты (Ожидание сети…)" : !connected ? "Чаты (Соединение…)" : "Чаты";
     }
-    private void paintTitle() { setTitle(titleFor(online, connected)); }
+    private LinearLayout connRow; private android.widget.TextView connTxt, meName;
+    private void paintTitle() {
+        if (connRow == null) return;
+        connRow.setVisibility(online && connected ? android.view.View.GONE : android.view.View.VISIBLE);
+        connTxt.setText(!online ? "Ожидание сети…" : "Соединение…");
+    }
     @Override protected void onDestroy() {
         super.onDestroy(); destroyed = true; listH.removeCallbacks(listPoll);
         android.net.ConnectivityManager cm = (android.net.ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
@@ -154,7 +200,8 @@ public class ChatsActivity extends AppCompatActivity {
     protected void onPause() { super.onPause(); visible = false; } // опрос продолжается реже: доставка и уведомления, пока приложение свёрнуто
 
     @Override
-    public boolean onCreateOptionsMenu(Menu m) {
+    public boolean onCreateOptionsMenu(Menu m) { return false; }
+    public boolean oldOptionsMenu(Menu m) {
         m.add(0, 1, 0, "Новый чат").setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM);
         m.add(0, 4, 1, "Новая группа").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER);
         m.add(0, 2, 1, "Войти на сайте (QR)").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER);
@@ -237,6 +284,33 @@ public class ChatsActivity extends AppCompatActivity {
                 authFail(e);
             }
         });
+    }
+
+    /** «Написать»: найти по никнейму, создать (или открыть) личный чат и перейти в него. */
+    private void createDirect(String raw) {
+        final String nick = raw.trim().replaceFirst("^@+", "").trim().toLowerCase(java.util.Locale.ROOT);
+        if (nick.isEmpty()) return;
+        io.execute(() -> {
+            try {
+                Api api = Api.get(this);
+                JSONArray r = api.select("profiles?select=id,username&username=eq." + java.net.URLEncoder.encode(nick, "UTF-8"));
+                if (r.length() == 0) { Ui.toast(this, "Пользователь @" + nick + " не найден"); return; }
+                String peer = r.getJSONObject(0).getString("id");
+                String cid = api.rpc("create_direct_chat", new JSONObject().put("p_other", peer)).trim().replace("\"", "");
+                loadChats();
+                if (cid.matches("[0-9a-f-]{36}")) runOnUiThread(() -> startActivity(new Intent(this, ChatActivity.class).putExtra("chat_id", cid)
+                        .putExtra("title", "@" + nick).putExtra("kind", "direct").putExtra("peer_id", peer)));
+            } catch (Exception e) { authFail(e); }
+        });
+    }
+    private void moreMenu(android.view.View anchor) {
+        android.widget.PopupMenu pm = new android.widget.PopupMenu(this, anchor);
+        pm.getMenu().add(0, 4, 0, "Новая группа");
+        pm.getMenu().add(0, 2, 1, "Войти на сайте (QR)");
+        pm.getMenu().add(0, 7, 2, "Проверить обновления");
+        pm.getMenu().add(0, 3, 3, "Выйти");
+        pm.setOnMenuItemClickListener(this::onOptionsItemSelected);
+        pm.show();
     }
 
     private void newChat() {
@@ -355,7 +429,7 @@ public class ChatsActivity extends AppCompatActivity {
         titles.clear(); titles.addAll(ct);
         rows.clear(); rows.addAll(rs);
         adapter.notifyDataSetChanged();
-        empty.setText("Пока нет чатов.\nНажмите «Новый чат», чтобы начать переписку.");
+        empty.setText("Пока нет чатов.\nНайдите собеседника по никнейму и нажмите «Написать».");
         empty.setVisibility(rows.isEmpty() ? android.view.View.VISIBLE : android.view.View.GONE);
     }
 

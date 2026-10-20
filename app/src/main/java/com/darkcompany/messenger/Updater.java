@@ -44,7 +44,7 @@ final class Updater {
                     JSONObject x = as.getJSONObject(i);
                     if (x.optString("name").endsWith(".apk")) { url = x.optString("browser_download_url"); name = x.optString("name"); break; }
                 }
-                if (url == null || !url.startsWith("https://github.com/")) return;
+                if (url == null || !allowedHost(url)) return;
                 String ver = rel.optString("name", tag); if (ver.isEmpty()) ver = tag;
                 final String fu = url, fver = ver;
                 a.runOnUiThread(() -> {
@@ -59,7 +59,7 @@ final class Updater {
         }, "updater").start();
     }
 
-    private static File target(Context c, int code) { File d = new File(c.getCacheDir(), "chat-files"); d.mkdirs(); return new File(d, "update-" + code + ".apk"); }
+    private static File target(Context c, int code) { File d = new File(c.getCacheDir(), "updates"); d.mkdirs(); return new File(d, "update-" + code + ".apk"); }
 
     private static void download(Activity a, String url, int code) {
         if (Build.VERSION.SDK_INT >= 26 && !a.getPackageManager().canRequestPackageInstalls()) {
@@ -86,12 +86,13 @@ final class Updater {
     private static final long MAX_APK = 200L * 1024 * 1024;
     private static void fetch(String url, File dst) throws Exception {
         for (int hop = 0; hop < 5; hop++) {
+            if (!allowedHost(url)) throw new java.io.IOException("host");
             java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
             c.setInstanceFollowRedirects(false); c.setConnectTimeout(20000); c.setReadTimeout(60000);
             int code = c.getResponseCode();
             if (code / 100 == 3) {
                 String loc = c.getHeaderField("Location"); c.disconnect();
-                if (loc == null || !loc.startsWith("https://")) throw new java.io.IOException("redirect");
+                if (!allowedHost(loc)) throw new java.io.IOException("redirect");
                 url = loc; continue;
             }
             if (code != 200) throw new java.io.IOException("HTTP " + code);
@@ -103,6 +104,14 @@ final class Updater {
             return;
         }
         throw new java.io.IOException("too many redirects");
+    }
+
+    private static final java.util.Set<String> HOSTS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"));
+    /** Скачивание и редиректы — только https и только GitHub (релиз → release-assets.githubusercontent.com). */
+    static boolean allowedHost(String url) {
+        try { java.net.URI u = new java.net.URI(url); return "https".equals(u.getScheme()) && u.getHost() != null && HOSTS.contains(u.getHost().toLowerCase(java.util.Locale.ROOT)) && u.getPort() == -1; }
+        catch (Exception e) { return false; }
     }
 
     /** null — можно ставить; иначе причина отказа. Та же подпись, тот же пакет, версия новее установленной. */

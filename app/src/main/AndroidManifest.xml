@@ -23,10 +23,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".ChatsActivity" android:exported="false" />
+        <activity android:name=".ChatsActivity" android:exported="false" android:theme="@style/Theme.Messenger.Site" />
         <activity android:name=".ProfileActivity" android:exported="false" />
         <activity android:name=".SettingsActivity" android:exported="false" />
-        <activity android:name=".ChatActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".ChatActivity" android:exported="false" android:theme="@style/Theme.Messenger.Site" android:windowSoftInputMode="adjustResize" />
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.files"

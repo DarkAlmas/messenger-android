@@ -15,4 +15,16 @@
         <item name="android:statusBarColor">#0F1117</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
+    <style name="Theme.Messenger.Site" parent="Theme.Messenger">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+    </style>
+    <color name="site_text">#E4E1EC</color>
+    <color name="site_text2">#A3A5B8</color>
+    <color name="site_chatbg">#0A0C10</color>
+    <color name="site_in">#21252F</color>
+    <color name="site_out">#3346D3</color>
+    <color name="site_inmeta">#8A8DA0</color>
+    <color name="site_divider">#12FFFFFF</color>
+    <color name="site_danger">#E53935</color>
 </resources>

@@ -17,8 +17,8 @@ android {
         applicationId = "com.darkcompany.messenger.nativeapp"
         minSdk = 29
         targetSdk = 37
-        versionCode = 4
-        versionName = "4.0-native"
+        versionCode = 5
+        versionName = "5.0-native"
         // Метка сборки (время МСК) — видна в подзаголовке экрана «Чаты»
         buildConfigField("String", "BUILD_TIME", "\"$buildTime\"")
         buildConfigField("String", "UPDATE_REPO", "\"DarkAlmas/messenger-android\"")
@@ -76,6 +76,12 @@ dependencies {
     implementation(libs.appcompat)
     implementation(libs.material)
     implementation("androidx.security:security-crypto:1.1.0")
+    // CameraX: встроенный круглый видоискатель для кружков
+    implementation("androidx.camera:camera-core:1.4.2")
+    implementation("androidx.camera:camera-camera2:1.4.2")
+    implementation("androidx.camera:camera-lifecycle:1.4.2")
+    implementation("androidx.camera:camera-video:1.4.2")
+    implementation("androidx.camera:camera-view:1.4.2")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     // Официальный libsignal (X3DH/PQXDH + Double Ratchet)
