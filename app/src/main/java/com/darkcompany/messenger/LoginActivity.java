@@ -22,7 +22,7 @@ public class LoginActivity extends AppCompatActivity {
     private android.widget.ImageView qrImg;
     private TextView msg, formTitle, pwHint;
     private LinearLayout userBox, googleSep;
-    private TextView googleBtn;
+    private TextView googleBtn, forgot;
     void showGoogle(boolean on) { int v = on ? android.view.View.VISIBLE : android.view.View.GONE; googleSep.setVisibility(v); googleBtn.setVisibility(v); }
 
     /** Вход через Google: PKCE (verifier только в памяти приложения/prefs), браузер или Custom Tabs — не WebView (Google его блокирует). */
@@ -110,6 +110,10 @@ public class LoginActivity extends AppCompatActivity {
         root.addView(password, new LinearLayout.LayoutParams(-1, -2));
         pwHint = Site.label(this, "Не меньше 10 символов", 12f, Site.text2(this), 400); pwHint.setVisibility(android.view.View.GONE);
         root.addView(pwHint);
+        // v12: «Забыли пароль?» (как на сайте: resetPasswordForEmail)
+        forgot = Site.link(this, "Забыли пароль?");
+        root.addView(forgot, new LinearLayout.LayoutParams(-2, Ui.dp(this, 44)));
+        forgot.setOnClickListener(v -> forgotPassword());
         userBox = new LinearLayout(this); userBox.setOrientation(LinearLayout.VERTICAL); userBox.setVisibility(android.view.View.GONE);
         userBox.addView(Site.caption(this, "Никнейм"));
         userBox.addView(username, new LinearLayout.LayoutParams(-1, -2));
@@ -149,11 +153,42 @@ public class LoginActivity extends AppCompatActivity {
             register = !register;
             userBox.setVisibility(register ? android.view.View.VISIBLE : android.view.View.GONE);
             pwHint.setVisibility(register ? android.view.View.VISIBLE : android.view.View.GONE);
+            forgot.setVisibility(register ? android.view.View.GONE : android.view.View.VISIBLE);
             formTitle.setText(register ? "Регистрация" : "Почта и пароль");
             action.setText(register ? "Зарегистрироваться" : "Войти");
             toggle.setText(register ? "Уже есть аккаунт? Войти" : "Нет аккаунта? Регистрация");
         });
         action.setOnClickListener(v -> submit());
+    }
+
+    /** Окно «Сброс пароля»: почта → POST /auth/v1/recover (PKCE), redirect на auth-callback. */
+    private void forgotPassword() {
+        final EditText em = Site.input(this, "Почта");
+        em.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        em.setText(email.getText().toString().trim());
+        final TextView info = Site.label(this, "Введите почту аккаунта — пришлём ссылку для сброса пароля. Откройте её на этом телефоне.", 14f, Site.text2(this), 400);
+        final TextView out = Site.label(this, "", 14f, Site.text2(this), 400);
+        final TextView send = Site.button(this, "Отправить ссылку");
+        final com.google.android.material.bottomsheet.BottomSheetDialog d = Site.sheet(this, "Сброс пароля", info, em, send, out);
+        send.setOnClickListener(v -> {
+            final String e = em.getText().toString().trim();
+            if (!e.contains("@")) { out.setText("Введите почту"); return; }
+            send.setEnabled(false); out.setText("Подождите…");
+            io.execute(() -> {
+                try {
+                    String ver = Api.pkceVerifier();
+                    AuthCallbackActivity.saveVerifier(this, ver, "recovery");
+                    getSharedPreferences("ui", 0).edit().putString("recovery_email", e).apply();
+                    Api.get(this).recover(e, Api.pkceChallenge(ver));
+                    runOnUiThread(() -> { out.setText("Письмо для сброса пароля отправлено на почту"); msg.setText("Письмо для сброса пароля отправлено на почту"); send.setEnabled(true); });
+                } catch (Exception ex) {
+                    int code = ex instanceof Api.HttpError ? ((Api.HttpError) ex).code : 0;
+                    String t = code == 429 ? "Слишком много попыток, попробуйте позже" : Ui.err(ex);
+                    runOnUiThread(() -> { out.setText(t); send.setEnabled(true); });
+                }
+            });
+        });
+        d.show();
     }
 
     private void submit() {
@@ -173,7 +208,7 @@ public class LoginActivity extends AppCompatActivity {
                     runOnUiThread(() -> {
                         msg.setText("Письмо отправлено. Подтвердите почту и затем войдите по паролю (так нужно для входа по QR).");
                         register = false;
-                        userBox.setVisibility(android.view.View.GONE); pwHint.setVisibility(android.view.View.GONE); formTitle.setText("Почта и пароль");
+                        userBox.setVisibility(android.view.View.GONE); pwHint.setVisibility(android.view.View.GONE); forgot.setVisibility(android.view.View.VISIBLE); formTitle.setText("Почта и пароль");
                         action.setText("Войти");
                         toggle.setText("Нет аккаунта? Регистрация");
                         action.setEnabled(true);

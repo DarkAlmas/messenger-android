@@ -29,6 +29,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".NewPasswordActivity" android:exported="false" android:theme="@style/Theme.Messenger.Site" />
         <!-- v11: возврат из входа через Google (PKCE): com.darkcompany.messenger.nativeapp://auth-callback?code=… -->
         <activity android:name=".AuthCallbackActivity" android:exported="true" android:launchMode="singleTask" android:theme="@style/Theme.Messenger.Site">
             <intent-filter>

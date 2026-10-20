@@ -251,6 +251,27 @@ public final class Api {
         return false;
     }
 
+    // ---------- v12: «Забыли пароль?» (как resetPasswordForEmail + updateUser на сайте) ----------
+    /** POST /auth/v1/recover c PKCE: письмо со ссылкой на auth-callback?code=… (или #access_token=…&type=recovery). */
+    public void recover(String email, String challenge) throws Exception {
+        JSONObject b = new JSONObject().put("email", email);
+        if (challenge != null) b.put("code_challenge", challenge).put("code_challenge_method", "s256");
+        String url = URL + "/auth/v1/recover?redirect_to=" + java.net.URLEncoder.encode(GOOGLE_REDIRECT, "UTF-8");
+        send(base(url).post(RequestBody.create(b.toString(), JSON)));
+    }
+    /** PUT /auth/v1/user {password} с текущей (recovery) сессией. */
+    public void updatePassword(String password) throws Exception {
+        authed("PUT", "/auth/v1/user", new JSONObject().put("password", password).toString(), (String) null);
+    }
+
+    /** После смены пароля: закрываем recovery-сессию и входим обычным образом по новому паролю (нужно для QR). */
+    public void reLoginWithPassword(String password) throws Exception {
+        String e = email();
+        revoke(sp.getString("access", null), sp.getString("refresh", null));
+        sp.edit().remove("access").remove("refresh").commit();
+        signIn(e, password);
+    }
+
     public void signUp(String email, String password, String username) throws Exception {
         JSONObject data = new JSONObject().put("username", username).put("display_name", username);
         JSONObject b = new JSONObject().put("email", email).put("password", password).put("data", data);
