@@ -77,7 +77,7 @@ public class NotifyService extends Service {
             if (first || prev == null) continue;
             if (me.equals(o.optString("last_sender"))) continue;
             if (id.equals(ChatActivity.openChat)) continue; // чат открыт на экране (openChat живёт между onStart и onStop)
-            String mu = muted.get(id); if (mu != null && Ui.instant(mu) / 1000 > System.currentTimeMillis()) continue;
+            String mu = muted.get(id); if (mu != null && Ui.instant(mu) > System.currentTimeMillis()) continue;
             if (!Notify.enabled(c)) continue;
             notifyChat(c, api, me, o, prev);
         }
@@ -87,7 +87,7 @@ public class NotifyService extends Service {
     private static void notifyChat(Context c, Api api, String me, JSONObject o, String prev) throws Exception {
         String id = o.getString("chat_id"), kind = o.optString("kind", ""), peer = o.isNull("peer_id") ? null : o.optString("peer_id");
         String title = o.optString("title", "Мессенджер");
-        if (peer != null) { JSONObject p = Avatars.merged(c, peer); String dn = p.isNull("display_name") ? "" : p.optString("display_name", "").trim(); title = !dn.isEmpty() ? dn : p.optString("username", title); }
+        if (peer != null) { Avatars.refresh(c, java.util.Collections.singleton(peer), 600000); String dn = Avatars.displayName(Avatars.merged(c, peer)); if (!"?".equals(dn)) title = dn; }
         JSONArray ms = api.select("messages?select=id,sender_id,sender_device,key_epoch,body,ciphertext,created_at&chat_id=eq." + id
                 + "&created_at=gt." + java.net.URLEncoder.encode(prev, "UTF-8") + "&order=created_at.asc&limit=10");
         for (int i = 0; i < ms.length(); i++) {
@@ -97,6 +97,7 @@ public class NotifyService extends Service {
             if (Notify.showText(c)) {
                 try {
                     if (m.isNull("ciphertext")) text = m.optString("body", text);
+                    else if (!"group".equals(kind) && E2e.get(c).notForMe(m.getJSONObject("ciphertext"))) text = ChatActivity.OTHER_DEV;
                     else {
                         String p = "group".equals(kind)
                                 ? E2e.group(c).decrypt(id, m.getString("id"), m.optString("sender_id"), m.isNull("sender_device") ? null : m.optString("sender_device"), m.optInt("key_epoch", -1), m.getJSONObject("ciphertext"))
@@ -106,8 +107,8 @@ public class NotifyService extends Service {
                 } catch (Exception ignored) { /* не расшифровалось сейчас — без текста, как на сайте */ }
             }
             String who = "";
-            JSONObject sp = Avatars.merged(c, m.getString("sender_id"));
-            if (sp != null) { String dn = sp.isNull("display_name") ? "" : sp.optString("display_name", "").trim(); who = !dn.isEmpty() ? dn : sp.optString("username", ""); }
+            Avatars.refresh(c, java.util.Collections.singleton(m.getString("sender_id")), 600000);
+            who = Avatars.displayName(Avatars.merged(c, m.getString("sender_id"))); if ("?".equals(who)) who = "";
             if ("direct".equals(kind)) who = ""; // в личном чате имя уже в заголовке
             Notify.message(c, id, title, kind, peer, who, text);
         }

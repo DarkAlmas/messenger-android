@@ -482,7 +482,7 @@ public class ChatsActivity extends AppCompatActivity {
             o.put("_title", t);
             JSONObject p = pv.optJSONObject(o.getString("chat_id"));
             // Расшифрованное превью (сохраняет экран чата), если оно про то же последнее сообщение
-            if (p != null && !o.isNull("last_at") && Ui.instant(p.optString("at")) == Ui.instant(o.optString("last_at"))) o.put("_preview", p.optString("t"));
+            if (p != null && !o.isNull("last_at") && Ui.instantMicros(p.optString("at")) == Ui.instantMicros(o.optString("last_at"))) o.put("_preview", p.optString("t"));
             cid.add(o.getString("chat_id")); ct.add(t); rs.add(o);
         }
         ids.clear(); ids.addAll(cid);

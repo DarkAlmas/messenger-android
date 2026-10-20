@@ -118,7 +118,17 @@ public class ChatActivity extends AppCompatActivity {
         pinBar.setVisibility(android.view.View.GONE);
         root.addView(pinBar, new LinearLayout.LayoutParams(-1, -2));
         header();
-        if (peerId != null) io.execute(() -> { if (Avatars.refresh(this, java.util.Collections.singleton(peerId), 0)) runOnUiThread(this::header); });
+        // имя и аватар собеседника: если peer_id не пришёл (уведомление, старый кэш) — берём из chat_members; профиль грузим всегда и перерисовываем шапку
+        if ("direct".equals(kind)) io.execute(() -> {
+            try {
+                if (peerId == null) {
+                    String me = Api.get(this).uid();
+                    JSONArray mm = Api.get(this).select("chat_members?select=user_id&chat_id=eq." + chatId);
+                    for (int i = 0; i < mm.length(); i++) { String u = mm.getJSONObject(i).optString("user_id"); if (!u.equals(me)) { peerId = u; break; } }
+                }
+                if (peerId != null) { Avatars.refresh(this, java.util.Collections.singleton(peerId), 0); runOnUiThread(this::header); }
+            } catch (Exception ignored) { }
+        });
         banner = Ui.text(this, "", 14);
         banner.setPadding(Ui.dp(this, 16), Ui.dp(this, 10), Ui.dp(this, 16), Ui.dp(this, 10));
         banner.setOnClickListener(v -> {
@@ -412,6 +422,13 @@ public class ChatActivity extends AppCompatActivity {
                         }
                         continue;
                     }
+                    try { // быстрый путь без блокировки (как peek() сайта): свой сохранённый текст / «Отправлено до входа…»
+                        String own = E2e.get(this).peekOwn(mid);
+                        if (own != null) { dec.put(mid, new JSONObject(own)); decSig.put(mid, sigCt); failCount.remove(mid); continue; }
+                        if (E2e.get(this).notForMe(m.getJSONObject("ciphertext")) && !"other".equals(dec.containsKey(mid) ? dec.get(mid).optString("err") : "")) {
+                            dec.put(mid, new JSONObject().put("err", "other")); decSig.put(mid, sigCt); failCount.remove(mid); continue; }
+                        if (E2e.get(this).notForMe(m.getJSONObject("ciphertext"))) continue;
+                    } catch (Exception ignored) { }
                     try {
                         String p = E2e.get(this).decrypt(mid, m.isNull("sender_id") ? null : m.optString("sender_id"), m.getJSONObject("ciphertext"));
                         dec.put(mid, p == null ? new JSONObject().put("err", "other") : new JSONObject(p));
@@ -443,6 +460,7 @@ public class ChatActivity extends AppCompatActivity {
                     JSONObject last = arr.getJSONObject(arr.length() - 1);
                     JSONObject lp = last.isNull("ciphertext") ? null : dec.get(last.optString("id"));
                     if (lp != null && !lp.has("err")) Cache.putPreview(this, chatId, last.optString("created_at"), Cache.previewOf(lp));
+                    else if (lp != null && "other".equals(lp.optString("err"))) Cache.putPreview(this, chatId, last.optString("created_at"), OTHER_DEV);
                 }
                 markDelivered(arr, api.uid());
                 final String sig = arr.toString() + reacts + reads + dec.size();
@@ -536,12 +554,14 @@ public class ChatActivity extends AppCompatActivity {
             final boolean mine = me.equals(m.optString("sender_id"));
             final JSONObject job = m.optJSONObject("_job");
             long at = Ui.instant(m.optString("created_at"));
-            // Ui.instant — микросекунды; dayKey/dayLabel ждут миллисекунды (раньше даты в ленте были «58769 г.»)
-            if (Site.dayKey(at / 1000) != lastDay) { lastDay = Site.dayKey(at / 1000); box.addView(Site.dateSep(this, Site.dayLabel(at / 1000, now))); }
+                        if (Site.dayKey(at) != lastDay) { lastDay = Site.dayKey(at); box.addView(Site.dateSep(this, Site.dayLabel(at, now))); }
             JSONObject next = i + 1 < all.size() ? all.get(i + 1) : null;
-            boolean tail = next == null || !m.optString("sender_id").equals(next.optString("sender_id")) || Site.dayKey(Ui.instant(next.optString("created_at")) / 1000) != lastDay;
+            boolean tail = next == null || !m.optString("sender_id").equals(next.optString("sender_id")) || Site.dayKey(Ui.instant(next.optString("created_at"))) != lastDay;
             String who = mine || !isGroup() ? null : (m.isNull("sender_id") ? "удалённый аккаунт" : names.getOrDefault(m.optString("sender_id"), "участник"));
             // --- .msg: буквальный перенос renderMsg() сайта ---
+            if (!m.isNull("ciphertext") && !dec.containsKey(id) && !isGroup() && job == null) { // сразу, без ожидания ключей
+                try { if (E2e.get(this).notForMe(m.optJSONObject("ciphertext"))) dec.put(id, new JSONObject().put("err", "other")); } catch (Exception ignored) { }
+            }
             final JSONObject pl = m.isNull("ciphertext") ? null : dec.get(id);
             final boolean ok = pl != null && !pl.has("err");
             final boolean otherDev = pl != null && "other".equals(pl.optString("err"));
@@ -582,7 +602,7 @@ public class ChatActivity extends AppCompatActivity {
             int tick = 0;
             if (job != null) tick = job.optBoolean("failed") ? 5 : 4;
             else if (mine && !otherDev) tick = tickState(at, othersDlv, othersRead);
-            if (!mine && (lastIncoming == null || at > Ui.instant(lastIncoming))) lastIncoming = m.optString("created_at");
+            if (!mine && (lastIncoming == null || Ui.instantMicros(m.optString("created_at")) > Ui.instantMicros(lastIncoming))) lastIncoming = m.optString("created_at");
             String lock = job != null ? null : m.isNull("ciphertext") ? PLAIN_MARK : "🔒";
             LinearLayout foot = MsgView.foot(this, mine, imgOnly, lock, pins.contains(id), edited, Ui.time(m.optString("created_at", "")), tick);
             Map<String, int[]> em = rmap.get(id);
@@ -623,7 +643,8 @@ public class ChatActivity extends AppCompatActivity {
 
     private void header() {
         String t = getIntent().getStringExtra("title");
-        if (peerId != null) { JSONObject p = Avatars.merged(this, peerId); String dn = p.isNull("display_name") ? "" : p.optString("display_name", "").trim(); if (!dn.isEmpty()) t = dn; }
+        if (t != null && (t.trim().isEmpty() || "null".equals(t.trim()) || "@null".equals(t.trim()))) t = null;
+        if (peerId != null) { JSONObject p = Avatars.merged(this, peerId); String dn = Avatars.displayName(p); if (!"?".equals(dn) || t == null) t = dn; }
         if (t == null) t = "Чат";
         titleV.setText(t);
         avaBox.removeAllViews();
@@ -819,6 +840,7 @@ public class ChatActivity extends AppCompatActivity {
     private String quoteBody(JSONObject q) {
         JSONObject pl = q.isNull("ciphertext") ? null : dec.get(q.optString("id"));
         if (q.isNull("ciphertext")) return q.isNull("body") || q.optString("body").isEmpty() ? "Сообщение" : q.optString("body");
+        if (pl != null && "other".equals(pl.optString("err"))) return OTHER_DEV;
         if (pl == null || pl.has("err")) return "🔒 Зашифрованное сообщение";
         JSONObject f = pl.optJSONObject("f");
         if (f != null && ("voice".equals(f.optString("vk")) || "round".equals(f.optString("vk")))) return Cache.previewOf(pl);
@@ -884,7 +906,7 @@ public class ChatActivity extends AppCompatActivity {
     }
     private String peerName(String uid) {
         JSONObject p = Avatars.profiles.get(uid);
-        if (p != null) { String dn = p.isNull("display_name") ? "" : p.optString("display_name", "").trim(); return dn.isEmpty() ? p.optString("username", "…") : dn; }
+        if (p != null) return Avatars.displayName(p);
         String n = names.get(uid); if (n == null) return "…"; int i = n.indexOf(" @"); return i > 0 ? n.substring(0, i) : n.startsWith("@") ? n.substring(1) : n;
     }
     static boolean isImage(JSONObject f) {
@@ -1009,6 +1031,7 @@ public class ChatActivity extends AppCompatActivity {
                 }).setNegativeButton("Отмена", null).show();
     }
 
+    static final String OTHER_DEV = "Отправлено до входа на этом устройстве";
     static final String PLAIN_MARK = "⚠ не зашифровано";
     private String textOf(JSONObject m) {
         if (m.isNull("ciphertext")) {
@@ -1018,7 +1041,7 @@ public class ChatActivity extends AppCompatActivity {
         }
         JSONObject pl = dec.get(m.optString("id"));
         if (pl == null) return "Расшифровка…"; // как на сайте: курсив, 🔒 — в строке времени
-        if (pl.has("err")) return "other".equals(pl.optString("err")) ? "Отправлено до входа на этом устройстве" : "Не удалось расшифровать";
+        if (pl.has("err")) return "other".equals(pl.optString("err")) ? OTHER_DEV : "Не удалось расшифровать";
         String t = pl.optString("t", "");
         if (t.isEmpty() && pl.optJSONObject("f") == null) return "(пустое сообщение)";
         return t;
@@ -1339,7 +1362,7 @@ public class ChatActivity extends AppCompatActivity {
             JSONObject m = arr.optJSONObject(i);
             if (m != null && !me.equals(m.optString("sender_id"))) upto = m.optString("created_at");
         }
-        if (upto == null || (deliveredUpto != null && Ui.instant(deliveredUpto) >= Ui.instant(upto))) return;
+        if (upto == null || (deliveredUpto != null && Ui.instantMicros(deliveredUpto) >= Ui.instantMicros(upto))) return;
         try { Api.get(this).rpc("mark_delivered", new JSONObject().put("p_chat", chatId).put("p_upto", upto)); deliveredUpto = upto; }
         catch (Exception e) { if (BuildConfig.DEBUG) android.util.Log.w("Dlv", "mark_delivered: " + e); }
     }
@@ -1383,7 +1406,7 @@ public class ChatActivity extends AppCompatActivity {
     private void markRead() {
         final String upto = seenUpto; if (chatId != null) Notify.cancel(this, chatId);
         if (upto == null || !running || !hasWindowFocus()) return;
-        if (markedUpto != null && Ui.instant(markedUpto) >= Ui.instant(upto)) return; // без повторов (иначе цикл через Realtime)
+        if (markedUpto != null && Ui.instantMicros(markedUpto) >= Ui.instantMicros(upto)) return; // без повторов (иначе цикл через Realtime)
         markedUpto = upto;
         io.execute(() -> {
             try { Api.get(this).rpc("mark_read", new JSONObject().put("p_chat", chatId).put("p_upto", upto)); }

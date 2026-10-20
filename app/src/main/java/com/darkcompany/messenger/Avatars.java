@@ -77,8 +77,16 @@ final class Avatars {
         return PALETTE[h % PALETTE.length];
     }
 
+    /** optString без ловушки JSON null → "null". */
+    static String str(JSONObject o, String k) { return o == null || o.isNull(k) ? "" : o.optString(k, "").trim(); }
+    /** displayName() сайта: display_name → username → «?». */
+    static String displayName(JSONObject p) {
+        String dn = str(p, "display_name"); if (!dn.isEmpty()) return dn;
+        String un = str(p, "username"); return un.isEmpty() ? "?" : un;
+    }
     static String letterFor(JSONObject p, String name) {
-        String l = p == null ? "" : p.optString("avatar_letter", "").trim();
+        String l = str(p, "avatar_letter");
+        if (name == null || name.trim().isEmpty() || "null".equals(name.trim())) name = p == null ? null : displayName(p);
         if (!l.isEmpty()) return l.substring(0, Math.min(l.length(), l.offsetByCodePoints(0, Math.min(2, l.codePointCount(0, l.length())))));
         String n = name == null ? "" : name.trim().replaceFirst("^@", "");
         return n.isEmpty() ? "?" : n.substring(0, n.offsetByCodePoints(0, 1)).toUpperCase();

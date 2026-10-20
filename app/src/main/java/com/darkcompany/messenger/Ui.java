@@ -364,7 +364,10 @@ final class Ui {
     }
 
     /** ISO-время PostgREST -> микросекунды UTC (для сравнения прочтения). */
-    static long instant(String iso) {
+    /** Миллисекунды epoch (как Date.parse на сайте). Раньше возвращались микросекунды, и все, кто передавал результат в Date/Calendar
+     *  (даты в ленте, «был(а)…», без звука, устройства), получали год 58771. Точность до микросекунд — instantMicros(). */
+    static long instant(String iso) { long us = instantMicros(iso); return us / 1000; }
+    static long instantMicros(String iso) {
         if (iso == null || iso.length() < 19) return 0;
         try {
             SimpleDateFormat in = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US);

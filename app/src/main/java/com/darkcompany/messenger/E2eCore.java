@@ -284,6 +284,16 @@ public final class E2eCore {
         return ct;
     }
 
+    /** peek() сайта (5211a04): без блокировки и без сети. Сохранённый текст своего сообщения или null. */
+    public String peekOwn(String msgId) { return store.kv.get("pts:" + msgId); }
+    /** Конверта для этого устройства нет (или ключи устройства ещё не созданы) — сообщение отправлено до входа здесь.
+     *  Не ждёт ensureReady(): показываем серую строку сразу, а не «🔒 …». Групповые (sk) — не трогаем. */
+    public boolean notForMe(JSONObject ct) {
+        if (ct == null || ct.has("sk") || ct.length() == 0) return false;
+        String dev = store.kv.get("dev");
+        return dev == null || !ct.has(dev);
+    }
+
     /** Запоминает открытый текст своего сообщения (свои сообщения себе не шифруются). */
     public void rememberOwn(String msgId, String plaintext) { store.kv.put("pts:" + msgId, plaintext); }
 
