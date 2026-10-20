@@ -858,7 +858,7 @@ public class ChatActivity extends AppCompatActivity {
     }
 
     private static final String[] REACT_EMOJI = {"👍", "❤️", "😂", "😮", "😢", "🔥"};
-    /** msgMenuItems сайта: Ответить, реакции, —, Закрепить, Изменить, Копировать текст, —, Удалить у всех. */
+    /** v13: таблетка реакций + Ответить, Копировать текст, Изменить, Закрепить, —, Удалить у всех. */
     private void actions(android.view.View anchor, JSONObject m, boolean mine, Map<String, int[]> em) {
         final String id = m.optString("id");
         final JSONObject pl = m.isNull("ciphertext") ? null : dec.get(id);
@@ -869,22 +869,19 @@ public class ChatActivity extends AppCompatActivity {
             replyBar.setText("↪ " + quoteOf(m, Api.get(this).uid()) + "   ✕");
             replyBar.setVisibility(android.view.View.VISIBLE);
         }));
-        for (String e : REACT_EMOJI) {
-            boolean had = em != null && em.containsKey(e) && em.get(e)[1] == 1;
-            items.add(new Site.Item(e, (had ? "Убрать " : "Реакция ") + e, false, () -> toggleReact(id, e, em)));
-        }
-        items.add(null);
-        if (canPin()) items.add(pins.contains(id) ? new Site.Item("push_pin", "Открепить", false, () -> pinMsg(id, false)) : new Site.Item("push_pin", "Закрепить", false, () -> pinMsg(id, true)));
-        if (mine && !body.isEmpty() && !m.isNull("ciphertext") && e2e && ("direct".equals(kind) || isGroup()) && (pl == null || pl.optJSONObject("f") == null))
-            items.add(new Site.Item("edit", "Изменить", false, () -> edit(id, body)));
         if (!body.isEmpty()) items.add(new Site.Item("content_copy", "Копировать текст", false, () -> {
             android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
             if (cm != null) cm.setPrimaryClip(android.content.ClipData.newPlainText("msg", body));
             toast("Текст скопирован");
         }));
+        if (mine && !body.isEmpty() && !m.isNull("ciphertext") && e2e && ("direct".equals(kind) || isGroup()) && (pl == null || pl.optJSONObject("f") == null))
+            items.add(new Site.Item("edit", "Изменить", false, () -> edit(id, body)));
+        if (canPin()) items.add(pins.contains(id) ? new Site.Item("push_pin", "Открепить", false, () -> pinMsg(id, false)) : new Site.Item("push_pin", "Закрепить", false, () -> pinMsg(id, true)));
         if (mine) { items.add(null); items.add(new Site.Item("delete", "Удалить у всех", true, () -> confirmDelete(m))); }
         if (items.get(items.size() - 1) == null) items.remove(items.size() - 1);
-        Site.menu(anchor, Site.lastTouch[0], Site.lastTouch[1], items);
+        java.util.Set<String> chosen = new java.util.HashSet<>();
+        if (em != null) for (Map.Entry<String, int[]> en : em.entrySet()) if (en.getValue()[1] == 1) chosen.add(en.getKey());
+        Site.messageMenu(anchor, REACT_EMOJI, chosen, e -> toggleReact(id, e, em), items);
     }
     private static String notifText(JSONObject pl) {
         JSONObject f = pl.optJSONObject("f");

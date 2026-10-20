@@ -467,6 +467,89 @@ final class Site {
         pw.showAtLocation(anchor.getRootView(), Gravity.TOP | Gravity.START, px, py);
         return pw;
     }
+    /** Меню сообщения (v13): таблетка реакций (48dp, r24, #2A2F3A, эмодзи 28sp, цель 40x40, gap 4) над списком действий
+     *  (gap 8, строки 44dp, значок 20dp, текст 15sp). Фон чата затемнён на 40%, пузырь остаётся ярким (снимок поверх затемнения).
+     *  Привязано к пузырю: снизу, если хватает места, иначе над ним. */
+    static android.widget.PopupWindow messageMenu(View bubble, String[] emoji, java.util.Set<String> chosen, java.util.function.Consumer<String> onReact, java.util.List<Item> items) {
+        Context c = bubble.getContext();
+        View root = bubble.getRootView();
+        android.widget.FrameLayout frame = new android.widget.FrameLayout(c);
+        frame.setBackgroundColor(0x66000000);
+        final android.widget.PopupWindow pw = new android.widget.PopupWindow(frame, root.getWidth(), root.getHeight(), true);
+        frame.setOnClickListener(v -> pw.dismiss());
+        int[] rl = new int[2]; root.getLocationOnScreen(rl);
+        int[] bl = new int[2]; bubble.getLocationOnScreen(bl);
+        int bx = bl[0] - rl[0], by = bl[1] - rl[1], bw = bubble.getWidth(), bh = bubble.getHeight();
+        // яркий пузырь поверх затемнения
+        if (bw > 0 && bh > 0) {
+            try {
+                android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(bw, bh, android.graphics.Bitmap.Config.ARGB_8888);
+                bubble.draw(new android.graphics.Canvas(bmp));
+                android.widget.ImageView iv = new android.widget.ImageView(c); iv.setImageBitmap(bmp);
+                android.widget.FrameLayout.LayoutParams il = new android.widget.FrameLayout.LayoutParams(bw, bh); il.leftMargin = bx; il.topMargin = by;
+                frame.addView(iv, il);
+            } catch (Throwable ignored) { }
+        }
+        LinearLayout box = new LinearLayout(c); box.setOrientation(LinearLayout.VERTICAL);
+        box.setClickable(true);
+        float el = Ui.dp(c, 12);
+        // таблетка реакций
+        LinearLayout pill = new LinearLayout(c); pill.setOrientation(LinearLayout.HORIZONTAL); pill.setGravity(Gravity.CENTER_VERTICAL);
+        pill.setBackground(round(0xFF2A2F3A, Ui.dp(c, 24))); pill.setElevation(el);
+        pill.setPadding(Ui.dp(c, 4), 0, Ui.dp(c, 4), 0);
+        for (int i = 0; i < emoji.length; i++) {
+            final String e = emoji[i];
+            TextView t = new TextView(c); t.setText(e); t.setTextSize(28f); t.setGravity(Gravity.CENTER); t.setIncludeFontPadding(false);
+            t.setContentDescription("Реакция " + e);
+            if (chosen != null && chosen.contains(e)) { GradientDrawable g = new GradientDrawable(); g.setShape(GradientDrawable.OVAL); g.setColor(0x334FC3F7); t.setBackground(g); }
+            t.setOnClickListener(v -> v.animate().scaleX(1.2f).scaleY(1.2f).setDuration(120).withEndAction(() -> { pw.dismiss(); onReact.accept(e); }).start());
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(c, 40), Ui.dp(c, 40));
+            if (i > 0) lp.leftMargin = Ui.dp(c, 4);
+            pill.addView(t, lp);
+        }
+        LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(-2, Ui.dp(c, 48));
+        box.addView(pill, pl);
+        // действия
+        LinearLayout col = new LinearLayout(c); col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(0, Ui.dp(c, 4), 0, Ui.dp(c, 4));
+        col.setBackground(round(0xFF2A2F3A, Ui.dp(c, 12))); col.setElevation(el);
+        col.setMinimumWidth(Ui.dp(c, 200));
+        for (Item it : items) {
+            if (it == null) { View sep = new View(c); sep.setBackgroundColor(0x33FFFFFF); LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-1, Math.max(1, Ui.dp(c, 1))); sl.setMargins(Ui.dp(c, 6), Ui.dp(c, 4), Ui.dp(c, 6), Ui.dp(c, 4)); col.addView(sep, sl); continue; }
+            LinearLayout b = new LinearLayout(c); b.setGravity(Gravity.CENTER_VERTICAL);
+            b.setPadding(Ui.dp(c, 16), 0, Ui.dp(c, 16), 0);
+            int fg = it.danger ? 0xFFFF5A5F : 0xFFE6E8EC;
+            TextView ic = icon(c, it.icon, 20, it.danger ? 0xFFFF5A5F : 0xFFA0A6B0); ic.setGravity(Gravity.CENTER);
+            b.addView(ic, new LinearLayout.LayoutParams(Ui.dp(c, 20), Ui.dp(c, 20)));
+            TextView t = label(c, it.text, 15f, fg, 400);
+            LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(-2, -2); tl.leftMargin = Ui.dp(c, 14);
+            b.addView(t, tl);
+            android.util.TypedValue tv = new android.util.TypedValue();
+            c.getTheme().resolveAttribute(android.R.attr.selectableItemBackground, tv, true);
+            b.setBackgroundResource(tv.resourceId);
+            b.setOnClickListener(v -> { pw.dismiss(); it.run.run(); });
+            col.addView(b, new LinearLayout.LayoutParams(-1, Ui.dp(c, 44)));
+        }
+        LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(-2, -2); cl.topMargin = Ui.dp(c, 8);
+        box.addView(col, cl);
+        int pad = Ui.dp(c, 8); box.setPadding(pad, pad, pad, pad); box.setClipToPadding(false);
+        box.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
+        int w = box.getMeasuredWidth(), h = box.getMeasuredHeight(), W = root.getWidth(), H = root.getHeight(), gap = Ui.dp(c, 4);
+        int top = by + bh + gap;
+        if (top + h > H) top = by - h - gap;               // нет места снизу — над пузырём
+        top = Math.max(0, Math.min(top, H - h));
+        boolean right = bx + bw / 2 > W / 2;
+        int left = right ? bx + bw - w + pad : bx - pad;
+        left = Math.max(0, Math.min(left, W - w));
+        android.widget.FrameLayout.LayoutParams fl = new android.widget.FrameLayout.LayoutParams(-2, -2); fl.leftMargin = left; fl.topMargin = top;
+        if (right) { pill.setLayoutParams(rightAlign(pl)); col.setLayoutParams(rightAlign(cl)); }
+        frame.addView(box, fl);
+        pw.setOutsideTouchable(true);
+        pw.setClippingEnabled(false);
+        pw.showAtLocation(root, Gravity.TOP | Gravity.START, rl[0], rl[1]);
+        return pw;
+    }
+    private static LinearLayout.LayoutParams rightAlign(LinearLayout.LayoutParams p) { p.gravity = Gravity.END; return p; }
     /** Последняя точка касания (для меню у пальца, как openMenu на сайте). */
     static final float[] lastTouch = {0, 0};
     static void trackTouch(View v) {
