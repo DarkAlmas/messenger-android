@@ -66,8 +66,7 @@ final class Notify {
                 return "🎤 Голосовое сообщение" + (f.has("d") ? " " + Cache.fmtDur(f.optDouble("d", 0)) : "");
             if ("round".equals(vk) || (vk.isEmpty() && (n.startsWith("round_") || n.startsWith("video_note")))) return "⭕ Видеосообщение";
             String c = !cap.isEmpty() ? cap : t;
-            if (ChatActivity.isImage(f)) return c.isEmpty() ? "Фото" : c;
-            return "📎 " + (c.isEmpty() ? (n.isEmpty() ? "Файл" : Avatars.str(f, "n")) : c);
+            return Cache.fileLabel(f, c);
         }
         // текст «Файл: voice_123.webm» (старые клиенты) — тоже голосовое
         java.util.regex.Matcher vm = java.util.regex.Pattern.compile("^Файл: (voice_|round_)[^\\s]*$").matcher(t);

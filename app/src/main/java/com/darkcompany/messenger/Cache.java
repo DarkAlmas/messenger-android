@@ -70,8 +70,15 @@ final class Cache {
         if (f != null && "round".equals(f.optString("vk"))) return "⭕ Видеосообщение";
         String t = pl.optString("t", "");
         if (f == null) return t;
-        String cap = pl.optString("caption", t);
-        if (f.optString("m", "").startsWith("image/")) return cap.isEmpty() ? "Фото" : cap;
-        return "📎 " + (cap.isEmpty() ? f.optString("n", "файл") : cap);
+        String cap = pl.optString("caption", "");
+        return fileLabel(f, cap.isEmpty() ? t : cap);
+    }
+    /** v14: «🖼 Фото», «🎥 Видео», «📎 имя» и « · подпись», если она есть. */
+    static String fileLabel(JSONObject f, String cap) {
+        String n = f.optString("n", "");
+        String base = ChatActivity.isImage(f) || f.optString("m", "").startsWith("image/") ? "🖼 Фото"
+                : ChatActivity.avKind(f) == 2 ? "🎥 Видео" : "📎 " + (n.isEmpty() ? "Файл" : n);
+        cap = cap == null ? "" : cap.trim();
+        return cap.isEmpty() ? base : base + " · " + cap;
     }
 }

@@ -59,9 +59,9 @@ public class V10Test {
         assertEquals("🎤 Голосовое сообщение 0:07", Notify.text(new JSONObject().put("f", new JSONObject().put("vk", "voice").put("d", 7))));
         assertEquals("🎤 Голосовое сообщение", Notify.text(new JSONObject().put("t", "Файл: voice_1792499725862.webm")));
         assertEquals("⭕ Видеосообщение", Notify.text(new JSONObject().put("f", new JSONObject().put("vk", "round"))));
-        assertEquals("Фото", Notify.text(new JSONObject().put("f", new JSONObject().put("n", "a.jpg").put("m", "image/jpeg"))));
+        assertEquals("🖼 Фото", Notify.text(new JSONObject().put("f", new JSONObject().put("n", "a.jpg").put("m", "image/jpeg"))));
         assertEquals("📎 doc.pdf", Notify.text(new JSONObject().put("f", new JSONObject().put("n", "doc.pdf").put("m", "application/pdf"))));
-        assertEquals("📎 clip.mp4", Notify.text(new JSONObject().put("f", new JSONObject().put("n", "clip.mp4").put("m", "video/mp4"))));
+        assertEquals("🎥 Видео", Notify.text(new JSONObject().put("f", new JSONObject().put("n", "clip.mp4").put("m", "video/mp4"))));
         assertEquals("Привет", Notify.text(new JSONObject().put("t", "Привет")));
     }
 
