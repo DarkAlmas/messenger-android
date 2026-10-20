@@ -191,7 +191,7 @@ public class ChatActivity extends AppCompatActivity {
                 new android.graphics.drawable.ColorDrawable(Site.divider(this)), new android.graphics.drawable.ColorDrawable(Site.surface(this))});
         sbg.setLayerInset(1, 0, Math.max(1, Ui.dp(this, 1)), 0, 0);
         barWrap.setBackground(sbg);
-        final EditText in = Site.input(this, "Сообщение");
+        final EditText in = Site.input(this, "Сообщение"); composer = in;
         in.setBackground(((android.graphics.drawable.GradientDrawable) in.getBackground()));
         ((android.graphics.drawable.GradientDrawable) in.getBackground()).setCornerRadius(Ui.dp(this, 24));
         in.setSingleLine(false); in.setMaxLines(5);
@@ -355,6 +355,7 @@ public class ChatActivity extends AppCompatActivity {
     }
     private final Runnable typingEnd = () -> { if (System.currentTimeMillis() >= typingUntil) { typingUntil = 0; paintSub(); } };
     private TextView titleV, subV, netLine, recTime, recCancel, recLock;
+    private EditText composer;
     private LinearLayout recBar; private android.animation.ObjectAnimator recBlink;
     private RoundBox roundBox;
 
@@ -587,7 +588,7 @@ public class ChatActivity extends AppCompatActivity {
             } else if (f != null && avKind(f) == 2) {
                 mediaV = MediaPlay.videoFile(this, f, io, v -> openE2eFile(f, !mine)); media = true;
             } else if (f != null && isImage(f)) {
-                mediaV = imagePreview(f, !mine); imgOnly = pl.optString("t", "").isEmpty();
+                mediaV = imagePreview(f, !mine); imgOnly = captionOf(pl).isEmpty();
                 ((LinearLayout.LayoutParams) mediaV.getLayoutParams()).topMargin = 0;
                 ((LinearLayout.LayoutParams) mediaV.getLayoutParams()).bottomMargin = imgOnly ? 0 : MsgView.dp(this, 8);
             } else if (f != null) {
@@ -613,10 +614,16 @@ public class ChatActivity extends AppCompatActivity {
             else if (imgOnly) { bubble.setPadding(MsgView.dp(this, 4), MsgView.dp(this, 4), MsgView.dp(this, 4), MsgView.dp(this, 4)); bubble.addView(MsgView.overlayFoot(this, mediaV, foot)); }
             else if (mediaV != null && !media && f == null) { /* старый файл без шифрования: ниже текста */ }
             else if (mediaV != null) bubble.addView(mediaV);
-            if (!imgOnly && !bd.isEmpty() && !(media && pl != null && pl.optString("t", "").isEmpty())) bubble.addView(MsgView.body(this, mine, bd, bodyKind), new LinearLayout.LayoutParams(-2, -2));
+            final boolean imgCap = f != null && isImage(f) && !imgOnly && !round; // v14: фото с подписью — фото на всю ширину (отступ 4dp), подпись 15sp, 6/12dp
+            if (imgCap) bubble.setPadding(MsgView.dp(this, 4), MsgView.dp(this, 4), MsgView.dp(this, 4), MsgView.dp(this, 6));
+            if (!imgOnly && !bd.isEmpty() && !(media && captionOf(pl).isEmpty())) {
+                android.view.View bv = MsgView.body(this, mine, bd, bodyKind);
+                if (imgCap) { bv.setPadding(MsgView.dp(this, 12), MsgView.dp(this, 6), MsgView.dp(this, 12), 0); if (bv instanceof TextView) ((TextView) bv).setTextSize(15f); }
+                bubble.addView(bv, new LinearLayout.LayoutParams(-2, -2));
+            }
             if (mediaV != null && f == null) bubble.addView(mediaV);
             if (!imgOnly) {
-                LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(round ? MsgView.dp(this, 200) : -2, -2); fl.topMargin = MsgView.dp(this, 2); fl.gravity = Gravity.END;
+                LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(round ? MsgView.dp(this, 200) : -2, -2); fl.topMargin = MsgView.dp(this, 2); fl.gravity = Gravity.END; if (imgCap) fl.rightMargin = MsgView.dp(this, 12);
                 bubble.addView(foot, fl);
             }
             if (job != null) {
@@ -733,7 +740,8 @@ public class ChatActivity extends AppCompatActivity {
         } catch (Exception e) { toast(Ui.err(e)); }
     }
     /** Файл/голосовое/кружок через очередь (как outbox сайта): без сети ждёт, при сбое — «Повторить/Удалить». */
-    private void outFile(byte[] plain, String name, String mime, JSONObject media) throws Exception {
+    private void outFile(byte[] plain, String name, String mime, JSONObject media) throws Exception { outFile(plain, name, mime, media, ""); }
+    private void outFile(byte[] plain, String name, String mime, JSONObject media, String caption) throws Exception {
         if (plain.length <= 0) throw new java.io.IOException("Пустой файл");
         if (plain.length > ChatFiles.MAX) throw new java.io.IOException("Файл больше 25 МБ");
         String id = java.util.UUID.randomUUID().toString();
@@ -745,6 +753,7 @@ public class ChatActivity extends AppCompatActivity {
                 .put("file", f.getAbsolutePath()).put("name", name);
         if (mime != null) j.put("mime", mime);
         if (media != null) j.put("media", media);
+        if (caption != null && !caption.isEmpty()) j.put("caption", caption);
         synchronized (outbox) { outbox.put(id, j); }
         saveOutbox();
         runOnUiThread(() -> { lastSig = null; fetchOrRender(); outRun(j); });
@@ -771,7 +780,7 @@ public class ChatActivity extends AppCompatActivity {
                     try {
                         if (j.has("file")) { // медиа из офлайн-очереди: открытые байты лежат в filesDir/outbox до отправки
                             byte[] plain; try (java.io.InputStream is = new java.io.FileInputStream(j.getString("file"))) { plain = readAll(is); }
-                            encryptAndSend(plain, j.optString("name"), j.has("mime") ? j.optString("mime") : null, j.optJSONObject("media"));
+                            encryptAndSend(plain, j.optString("name"), j.has("mime") ? j.optString("mime") : null, j.optJSONObject("media"), j.optString("caption", ""));
                         } else post(new JSONObject().put("v", 1).put("t", j.optString("text")), j.has("rt") ? j.optString("rt") : null, null);
                     }
                     finally { pendingId = null; }
@@ -1041,7 +1050,7 @@ public class ChatActivity extends AppCompatActivity {
         JSONObject pl = dec.get(m.optString("id"));
         if (pl == null) return "Расшифровка…"; // как на сайте: курсив, 🔒 — в строке времени
         if (pl.has("err")) return "other".equals(pl.optString("err")) ? OTHER_DEV : "Не удалось расшифровать";
-        String t = pl.optString("t", "");
+        String t = captionOf(pl);
         if (t.isEmpty() && pl.optJSONObject("f") == null) return "(пустое сообщение)";
         return t;
     }
@@ -1375,7 +1384,7 @@ public class ChatActivity extends AppCompatActivity {
         });
     }
     /** Общая отправка файла (как sendFile на сайте). При ошибке вставки сообщения загруженный объект удаляется. */
-    private void encryptAndSend(byte[] plain, String fname, String mime, JSONObject media) throws Exception {
+    private void encryptAndSend(byte[] plain, String fname, String mime, JSONObject media, String caption) throws Exception {
         Api api = Api.get(this);
         if (plain.length <= 0) throw new java.io.IOException("Пустой файл");
         if (plain.length > ChatFiles.MAX) throw new java.io.IOException("Файл больше 25 МБ");
@@ -1392,11 +1401,23 @@ public class ChatActivity extends AppCompatActivity {
                     .put("k", E2eCore.b64(enc[1])).put("iv", E2eCore.b64(enc[2])).put("h", E2eCore.sha256hex(plain));
             if (media != null) for (java.util.Iterator<String> it = media.keys(); it.hasNext(); ) { String k = it.next(); f.put(k, media.get(k)); }
             pendingAttachment = path;
-            post(new JSONObject().put("v", 1).put("t", "").put("f", f), null, null);
+            post(filePayload(f, caption), null, null);
         } catch (Exception e) {
             if (path != null) ChatFiles.remove(path, api.freshToken());
             throw e;
         } finally { et.delete(); pendingAttachment = null; }
+    }
+    /** Payload файла как sendFile сайта: {v:1, t:'', f, caption?}. */
+    static JSONObject filePayload(JSONObject f, String caption) throws org.json.JSONException {
+        JSONObject p = new JSONObject().put("v", 1).put("t", "").put("f", f);
+        if (caption != null && !caption.trim().isEmpty()) p.put("caption", caption.trim().length() > 4000 ? caption.trim().substring(0, 4000) : caption.trim());
+        return p;
+    }
+    /** Подпись к вложению: t, иначе caption (сайт кладёт подпись в caption, t пустой). */
+    static String captionOf(JSONObject pl) {
+        if (pl == null) return "";
+        String t = pl.optString("t", "");
+        return !t.isEmpty() ? t : pl.optJSONObject("f") != null ? pl.optString("caption", "") : "";
     }
     /** attachment_path для строки messages (только путь; имя, размер и ключ — в шифротексте). */
     private volatile String pendingAttachment = null;
@@ -1427,6 +1448,8 @@ public class ChatActivity extends AppCompatActivity {
         final String fname = ChatFiles.safeName(name);
         final long fsize = size;
         final String mime = getContentResolver().getType(uri);
+        final String cap = composer == null ? "" : composer.getText().toString().trim(); // v14: текст из поля — подпись к файлу (как на сайте)
+        if (!cap.isEmpty()) composer.setText("");
         toast("Отправляю «" + fname + "»…");
         io.execute(() -> {
             java.io.File tmp = null;
@@ -1440,7 +1463,7 @@ public class ChatActivity extends AppCompatActivity {
                 if (sz <= 0) throw new java.io.IOException("Пустой файл");
                 byte[] plain;
                 try (java.io.InputStream is = getContentResolver().openInputStream(src)) { plain = readAll(is); }
-                outFile(plain, fname, mime, null);
+                outFile(plain, fname, mime, null, cap);
             } catch (Exception e) {
                 toast(Ui.err(e));
                 if (e instanceof Api.AuthException) finish();

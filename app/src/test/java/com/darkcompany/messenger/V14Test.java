@@ -33,4 +33,15 @@ public class V14Test {
         assertEquals("🎥 Видео · смотри", Notify.text(pl("смотри", null, "clip.mp4", "video/mp4")));
         assertEquals("📎 a.pdf · договор", Notify.text(pl("договор", null, "a.pdf", "application/pdf")));
     }
+    @Test public void captionFormat() throws Exception {
+        JSONObject f = new JSONObject().put("n", "a.jpg").put("m", "image/jpeg");
+        JSONObject p = ChatActivity.filePayload(f, " Ну вот, как-то так ");
+        assertEquals("", p.getString("t"));
+        assertEquals("Ну вот, как-то так", p.getString("caption"));
+        assertFalse(ChatActivity.filePayload(f, "").has("caption"));
+        assertEquals("Ну вот, как-то так", ChatActivity.captionOf(p));
+        assertEquals("подпись", ChatActivity.captionOf(new JSONObject().put("v", 1).put("t", "подпись").put("f", f)));
+        assertEquals("", ChatActivity.captionOf(new JSONObject().put("v", 1).put("t", "").put("f", f)));
+        assertEquals("🖼 Фото · Ну вот, как-то так", Cache.previewOf(p));
+    }
 }
