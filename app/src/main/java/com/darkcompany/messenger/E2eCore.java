@@ -89,6 +89,34 @@ public final class E2eCore {
             for (String k : new ArrayList<>(store.kv.keys())) store.kv.remove(k);
             store.kv.put("owner", net.uid());
         }
+        String oldDev = store.kv.get("dev");
+        // v11 (как сайт a30f605): новая сессия того же аккаунта, локальные ключи целы — переносим строку ключей старого устройства
+        // на новую сессию (rpc rebind_device), а не заводим новое устройство. Коды Hack Bot: RB001/RB002/RB003, иначе — по тексту.
+        if (oldDev != null && !oldDev.equals(dev) && store.kv.get("idk") != null && store.kv.get("dsec") != null
+                && !"1".equals(store.kv.get("norebind")) && !serverHasDevice(dev)) {
+            try {
+                String r = net.call("POST", "/rest/v1/rpc/rebind_device", new JSONObject().put("p_old_device", oldDev).put("p_secret", store.kv.get("dsec")).toString(), false).trim();
+                String nd = r.replace("\"", "");
+                if (nd.isEmpty() || nd.equals("null")) throw new IllegalStateException("rebind_device вернул пустой id");
+                adopt(oldDev, nd);
+            } catch (Exception e) {
+                String kind = rebindKind(e);
+                lastRebindKind = kind;
+                // Ответ потерялся, но перенос прошёл: строка этой сессии уже с нашим identity — принимаем её
+                if (!"denied".equals(kind)) {
+                    try {
+                        String r2 = net.call("GET", "/rest/v1/devices_keys?select=identity_pub&device_id=eq." + dev, null, false);
+                        JSONArray a = new JSONArray(r2);
+                        if (a.length() > 0 && b64(store.getIdentityKeyPair().getPublicKey().serialize()).equals(a.getJSONObject(0).optString("identity_pub"))) { adopt(oldDev, dev); topUpPrekeys(); return; }
+                    } catch (Exception ignored) { }
+                }
+                // Прежний сеанс ещё активен (RB002) — новое устройство молча НЕ заводим: решает пользователь («Подождать / Новое устройство»)
+                if ("active".equals(kind)) throw new RebindBlocked(kind);
+                // Сеть/сервер без ответа PostgREST — тоже не регистрируем, повторим при связи
+                if ("".equals(kind)) throw e;
+                // RB001 (секрет не подошёл / устройства нет) и RB003 — обычная регистрация нового устройства
+            }
+        }
         if (!dev.equals(store.kv.get("dev"))) {
             // Новая сессия = новое устройство: старые ключи и сессии не годятся
             for (String k : new ArrayList<>(store.kv.keys()))
@@ -131,8 +159,80 @@ public final class E2eCore {
                 net.call("PATCH", "/rest/v1/devices_keys?device_id=eq." + dev, row.toString(), true);
             }
             store.kv.put("uploaded", "1");
+            store.kv.put("dsec_rotate", "1");
         }
+        ensureSecret();
         topUpPrekeys();
+    }
+
+    /** Последний вид отказа rebind_device: denied / active / has / "" (сеть). Для тестов и UI. */
+    public volatile String lastRebindKind = null;
+
+    /** RB001 → denied, RB002 → active, RB003 → has; без кода — по тексту; "" — не ответ сервера (сеть). */
+    public static String rebindKind(Exception e) {
+        String code = e instanceof Api.HttpError ? ((Api.HttpError) e).pgCode : null;
+        String t = String.valueOf(e.getMessage());
+        return rebindKind(code, t, e instanceof Api.HttpError);
+    }
+    public static String rebindKind(String code, String text, boolean fromServer) {
+        if ("RB001".equals(code)) return "denied";
+        if ("RB002".equals(code)) return "active";
+        if ("RB003".equals(code)) return "has";
+        String t = text == null ? "" : text.toLowerCase(java.util.Locale.ROOT);
+        if (t.contains("rebind denied")) return "denied";
+        if (t.contains("active session")) return "active";
+        if (t.contains("already has a device")) return "has";
+        return fromServer ? "other" : "";
+    }
+    /** Текст для пользователя по виду ошибки rebind_device. */
+    public static String rebindMessage(String kind) {
+        switch (kind == null ? "" : kind) {
+            case "denied": return "Ключи прежнего входа на этом телефоне не подошли (неверный секрет или устройство уже удалено). Телефон зарегистрирован как новое устройство: сообщения, отправленные до входа, здесь не прочитать.";
+            case "active": return "Прежний сеанс на этом телефоне ещё не завершён на сервере, поэтому ключи шифрования пока не перенесены. Сообщения не отправляются.";
+            case "has": return "У текущего сеанса уже есть устройство, ключи прежнего входа перенести нельзя.";
+            case "": return "Нет связи с сервером: ключи шифрования перенесём, когда появится сеть.";
+            default: return "Не удалось перенести ключи прежнего входа.";
+        }
+    }
+
+    /** rebind_device отказал, потому что прежний сеанс ещё активен (RB002). */
+    public static class RebindBlocked extends Exception {
+        public final String kind;
+        public RebindBlocked(String kind) { super(rebindMessage(kind)); this.kind = kind; }
+    }
+
+    /** Пользователь выбрал «Новое устройство»: при следующем ensureReady регистрируем новые ключи без rebind. */
+    public synchronized void allowNewDevice() { store.kv.put("norebind", "1"); }
+
+    /** Переход на новый id после rebind: старые ключи остаются, сессии libsignal со старым адресом — заново (новый X3DH). */
+    private void adopt(String oldDev, String nd) throws Exception {
+        try {
+            JSONArray old = new JSONArray(store.kv.get("olddevs") == null ? "[]" : store.kv.get("olddevs"));
+            boolean seen = false; for (int i = 0; i < old.length(); i++) if (oldDev.equals(old.getString(i))) seen = true;
+            if (!seen) old.put(oldDev);
+            while (old.length() > 20) old.remove(0);
+            store.kv.put("olddevs", old.toString());
+        } catch (Exception ignored) { }
+        for (String k : new ArrayList<>(store.kv.keys())) if (k.startsWith("sess:")) store.kv.remove(k);
+        claimedAt.clear();
+        store.kv.put("dev", nd);
+        store.kv.put("uploaded", "1");
+        store.kv.remove("norebind");
+        store.kv.put("dsec_rotate", "1"); // секрет старого устройства больше не используем
+        rebound++;
+    }
+    /** Сколько раз устройство перенесено через rebind_device (диагностика/тесты). */
+    public volatile int rebound = 0;
+
+    /** Секрет устройства (32 байта, base64url) — только в хранилище ключей и в set_device_secret/rebind_device. Не логировать. */
+    private void ensureSecret() {
+        if (store.kv.get("dsec") != null && !"1".equals(store.kv.get("dsec_rotate"))) return;
+        byte[] b = new byte[32]; rnd.nextBytes(b);
+        String fresh = Base64.getUrlEncoder().withoutPadding().encodeToString(b);
+        try {
+            net.call("POST", "/rest/v1/rpc/set_device_secret", new JSONObject().put("p_secret", fresh).toString(), false);
+            store.kv.put("dsec", fresh); store.kv.remove("dsec_rotate");
+        } catch (Exception e) { store.kv.put("dsec_rotate", "1"); } // старый секрет остаётся, повторим при следующем запуске
     }
 
     /** Сколько раз за жизнь процесса ключи публиковались повторно (диагностика/тесты). */
@@ -291,7 +391,16 @@ public final class E2eCore {
     public boolean notForMe(JSONObject ct) {
         if (ct == null || ct.has("sk") || ct.length() == 0) return false;
         String dev = store.kv.get("dev");
-        return dev == null || !ct.has(dev);
+        if (dev == null) return true;
+        if (ct.has(dev)) return false;
+        for (String od : oldDevs()) if (ct.has(od)) return false;
+        return true;
+    }
+    /** Прежние id этого устройства (до rebind_device): сообщения, зашифрованные для них, тоже наши. */
+    public List<String> oldDevs() {
+        List<String> out = new ArrayList<>();
+        try { JSONArray a = new JSONArray(store.kv.get("olddevs")); for (int i = 0; i < a.length(); i++) out.add(a.getString(i)); } catch (Exception ignored) { }
+        return out;
     }
 
     /** Запоминает открытый текст своего сообщения (свои сообщения себе не шифруются). */
@@ -302,6 +411,7 @@ public final class E2eCore {
         String own = store.kv.get("pts:" + msgId);
         if (own != null) return own;
         JSONObject e = ct.optJSONObject(deviceId());
+        if (e == null) for (String od : oldDevs()) { e = ct.optJSONObject(od); if (e != null) break; }
         if (e == null) return null;
         String ck = "pt:" + msgId + ":" + sha256hex(e.getString("b").getBytes(StandardCharsets.UTF_8)).substring(0, 16);
         String cached = store.kv.get(ck);
@@ -400,8 +510,11 @@ public final class E2eCore {
      * чтобы история не пропала после повторного входа того же аккаунта.
      */
     public synchronized void wipe() {
+        // v11: ключи и секрет устройства сохраняются — при следующем входе rebind_device вернёт это устройство (как сайт)
+        java.util.Set<String> keepKeys = new java.util.HashSet<>(java.util.Arrays.asList("idk", "reg", "dev", "dsec", "dsec_rotate", "otk_next", "olddevs", "uploaded"));
         for (String k : new ArrayList<>(store.kv.keys()))
-            if (!k.startsWith("pt") && !k.startsWith("trust:") && !k.startsWith("pending:") && !k.startsWith("verified:") && !k.equals("owner")) store.kv.remove(k);
+            if (!k.startsWith("pt") && !k.startsWith("trust:") && !k.startsWith("pending:") && !k.startsWith("verified:") && !k.equals("owner")
+                    && !keepKeys.contains(k) && !k.startsWith("pk:") && !k.startsWith("spk:") && !k.startsWith("kpk:") && !k.startsWith("sk:") && !k.startsWith("ident:")) store.kv.remove(k);
         claimedAt.clear();
     }
 

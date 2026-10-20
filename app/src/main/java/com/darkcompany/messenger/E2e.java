@@ -61,8 +61,17 @@ public final class E2e {
                 if (storeError != null) { lastError = storeError; return false; }
             }
         }
-        try { get(c).ensureReady(); lastError = null; return true; }
-        catch (Exception e) { lastError = "Не удалось подготовить ключи шифрования этого устройства: " + Ui.err(e); return false; }
+        E2eCore core = get(c);
+        try {
+            core.lastRebindKind = null;
+            core.ensureReady(); lastError = null; rebindBlocked = false;
+            String k = core.lastRebindKind; // rebind отказал (RB001/RB003), зарегистрировано новое устройство — сообщаем один раз
+            if (k != null && !k.isEmpty() && !"active".equals(k)) rebindNotice = E2eCore.rebindMessage(k);
+            return true;
+        }
+        catch (E2eCore.RebindBlocked e) { rebindBlocked = true; lastError = e.getMessage(); return false; }
+        catch (Exception e) {
+            if ("".equals(core.lastRebindKind)) { lastError = E2eCore.rebindMessage(""); rebindBlocked = true; return false; } lastError = "Не удалось подготовить ключи шифрования этого устройства: " + Ui.err(e); return false; }
     }
     private static volatile long lastCheck = 0;
     /** Проверка ключей не чаще раза в 10 минут (вызывать при старте, onResume и по таймеру). force — сразу. */
@@ -74,4 +83,8 @@ public final class E2e {
     }
     /** Причина, по которой своё устройство не готово к шифрованию (null — всё в порядке). */
     public static volatile String lastError;
+    /** rebind_device: прежний сеанс активен (RB002) или нет сети — ждём решения «Подождать / Новое устройство». */
+    public static volatile boolean rebindBlocked = false;
+    /** Одноразовое сообщение об отказе rebind_device (новое устройство уже зарегистрировано). */
+    public static volatile String rebindNotice;
 }

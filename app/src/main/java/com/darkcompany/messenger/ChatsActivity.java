@@ -49,6 +49,7 @@ public class ChatsActivity extends AppCompatActivity {
         if (!Api.get(this).hasSession()) { startActivity(new Intent(this, LoginActivity.class)); finish(); return; }
         io.execute(() -> ChatFiles.cleanup(this));
         keysIo.execute(() -> keysCheck(true)); // ключи E2E для этого устройства
+        io.execute(() -> NickDialog.checkAndShow(this)); // v11: вход через Google — имя пользователя ещё не выбрано
         ListView list = new ListView(this);
         adapter = new ArrayAdapter<String>(this, 0, titles) {
             @Override public android.view.View getView(int pos, android.view.View cv, android.view.ViewGroup parent) {
@@ -206,9 +207,30 @@ public class ChatsActivity extends AppCompatActivity {
     private void keysCheck(boolean force) {
         boolean ok = E2e.ensureFresh(this, force);
         String err = ok ? null : E2e.lastError;
+        String note = E2e.rebindNotice;
+        if (note != null) { E2e.rebindNotice = null; runOnUiThread(() -> Ui.toast(this, note)); }
+        if (ok) rebindAsked = false;
+        if (!ok && E2e.rebindBlocked) { runOnUiThread(this::askRebind); shownKeyErr = err; return; }
         if (err != null && !err.equals(shownKeyErr)) Ui.toast(this, err + " Повторю автоматически.");
         shownKeyErr = err;
     }
+    private boolean rebindAsked = false;
+    /** Как rebindBlockedAsk() сайта: новое устройство — только по явному выбору пользователя. */
+    void askRebind() {
+        if (rebindAsked || isFinishing()) return; rebindAsked = true;
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Ключи шифрования не перенесены")
+                .setMessage(REBIND_ASK + "\n\n" + E2e.lastError)
+                .setNegativeButton("Подождать", null) // спросим снова при следующем запуске приложения
+                .setPositiveButton("Новое устройство", (d, w) -> keysIo.execute(() -> {
+                    E2e.get(this).allowNewDevice(); E2e.rebindBlocked = false;
+                    boolean ok = E2e.ensureFresh(this, true);
+                    runOnUiThread(() -> Ui.toast(this, ok ? "Устройство зарегистрировано" : String.valueOf(E2e.lastError)));
+                    rebindAsked = false;
+                }))
+                .setCancelable(false).show();
+    }
+    static final String REBIND_ASK = "Прежний сеанс этого телефона ещё не закрыт на сервере (или нет связи), поэтому ключи шифрования нельзя перенести на новый вход.\n\nМожно подождать и повторить позже или зарегистрировать телефон как новое устройство. Новое устройство не сможет прочитать сообщения, отправленные до входа, и появится в списке «Устройства».";
     @Override
     protected void onNewIntent(Intent i) { super.onNewIntent(i); setIntent(i); }
     /** Действия из «Настроек» (на сайте нет меню ⋮): новая группа, вход на сайте по QR. */
@@ -273,7 +295,8 @@ public class ChatsActivity extends AppCompatActivity {
 
     private void logout() { logout(this); }
 
-    /** Выход: удалить ключи устройства, отозвать сессию, очистить кэш файлов. */
+    /** Выход: отозвать сессию (сервер закрывает её — тогда rebind_device вернёт это устройство при входе), очистить кэш файлов.
+     *  Ключи устройства сохраняются, как на сайте; сессии libsignal и служебные кэши удаляются (E2eCore.wipe). */
     static void logout(android.app.Activity a) {
         E2e.get(a).wipe();
         Cache.wipe(a);

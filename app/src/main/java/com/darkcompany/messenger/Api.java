@@ -163,7 +163,10 @@ public final class Api {
 
     public static class HttpError extends IOException {
         public final int code;
-        public HttpError(int code, String body) { super(parseMsg(body)); this.code = code; }
+        /** Код PostgREST/Postgres из поля code ответа (например RB002), если есть. */
+        public final String pgCode;
+        public HttpError(int code, String body) { super(parseMsg(body)); this.code = code; this.pgCode = parseCode(body); }
+        static String parseCode(String b) { try { Object c = new JSONObject(b).opt("code"); return c instanceof String ? (String) c : null; } catch (Exception e) { return null; } }
         private static String parseMsg(String b) {
             try {
                 JSONObject o = new JSONObject(b);
@@ -197,6 +200,55 @@ public final class Api {
         JSONObject b = new JSONObject().put("email", email).put("password", password);
         String r = send(base(URL + "/auth/v1/token?grant_type=password").post(RequestBody.create(b.toString(), JSON)));
         save(new JSONObject(r));
+    }
+
+    // ---------- v11: вход через Google (OAuth PKCE через браузер/Custom Tabs, как signInWithOAuth на сайте) ----------
+    public static final String GOOGLE_REDIRECT = "com.darkcompany.messenger.nativeapp://auth-callback";
+
+    /** /auth/v1/settings → external.google; null — нет сети (кнопку не трогаем, как на сайте). */
+    public Boolean googleEnabled() {
+        try {
+            JSONObject j = new JSONObject(send(base(URL + "/auth/v1/settings").get()));
+            JSONObject ex = j.optJSONObject("external");
+            return ex != null && ex.optBoolean("google", false);
+        } catch (Exception e) { return null; }
+    }
+    public static boolean googleEnabled(String settingsJson) {
+        try { JSONObject ex = new JSONObject(settingsJson).optJSONObject("external"); return ex != null && ex.optBoolean("google", false); }
+        catch (Exception e) { return false; }
+    }
+
+    /** code_verifier PKCE: 32 случайных байта, base64url без '='. */
+    public static String pkceVerifier() {
+        byte[] b = new byte[32]; new java.security.SecureRandom().nextBytes(b);
+        return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(b);
+    }
+    public static String pkceChallenge(String verifier) throws Exception {
+        byte[] h = java.security.MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+        return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(h);
+    }
+    public static String googleAuthorizeUrl(String challenge) throws Exception {
+        String enc = java.net.URLEncoder.encode(GOOGLE_REDIRECT, "UTF-8");
+        return URL + "/auth/v1/authorize?provider=google&redirect_to=" + enc + "&code_challenge=" + challenge + "&code_challenge_method=s256";
+    }
+    /** Обмен кода на сессию: /auth/v1/token?grant_type=pkce. */
+    public void exchangePkce(String code, String verifier) throws Exception {
+        JSONObject b = new JSONObject().put("auth_code", code).put("code_verifier", verifier);
+        String r = send(base(URL + "/auth/v1/token?grant_type=pkce").post(RequestBody.create(b.toString(), JSON)));
+        save(new JSONObject(r));
+    }
+
+    /**
+     * Перед новым входом (как beforeSignIn сайта a30f605): если сохранённая сессия ещё жива — обновляем её (refresh) и
+     * новый вход не нужен (true). Иначе закрываем её на сервере (logout local), чтобы rebind_device смог перенести ключи.
+     */
+    public boolean beforeSignIn() {
+        String rt = sp.getString("refresh", null);
+        if (rt == null) return false;
+        if (refresh()) { loggingOut = false; return true; }
+        revoke(sp.getString("access", null), rt);
+        sp.edit().remove("access").remove("refresh").commit();
+        return false;
     }
 
     public void signUp(String email, String password, String username) throws Exception {

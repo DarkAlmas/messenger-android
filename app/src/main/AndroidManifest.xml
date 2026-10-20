@@ -14,6 +14,8 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <queries>
         <intent><action android:name="android.media.action.VIDEO_CAPTURE" /></intent>
+        <intent><action android:name="android.support.customtabs.action.CustomTabsService" /></intent>
+        <intent><action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.BROWSABLE" /><data android:scheme="https" /></intent>
     </queries>
     <application
         android:allowBackup="false"
@@ -25,6 +27,15 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <!-- v11: возврат из входа через Google (PKCE): com.darkcompany.messenger.nativeapp://auth-callback?code=… -->
+        <activity android:name=".AuthCallbackActivity" android:exported="true" android:launchMode="singleTask" android:theme="@style/Theme.Messenger.Site">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.darkcompany.messenger.nativeapp" android:host="auth-callback" />
             </intent-filter>
         </activity>
         <activity android:name=".ChatsActivity" android:exported="false" android:theme="@style/Theme.Messenger.Site" />

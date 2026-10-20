@@ -21,7 +21,39 @@ public class LoginActivity extends AppCompatActivity {
     private android.widget.FrameLayout qrBox;
     private android.widget.ImageView qrImg;
     private TextView msg, formTitle, pwHint;
-    private LinearLayout userBox;
+    private LinearLayout userBox, googleSep;
+    private TextView googleBtn;
+    void showGoogle(boolean on) { int v = on ? android.view.View.VISIBLE : android.view.View.GONE; googleSep.setVisibility(v); googleBtn.setVisibility(v); }
+
+    /** Вход через Google: PKCE (verifier только в памяти приложения/prefs), браузер или Custom Tabs — не WebView (Google его блокирует). */
+    private void google() {
+        googleBtn.setEnabled(false); googleBtn.setAlpha(0.6f);
+        io.execute(() -> {
+            if (Api.get(this).beforeSignIn()) { runOnUiThread(this::openChats); return; }
+            try {
+                String ver = Api.pkceVerifier();
+                AuthCallbackActivity.saveVerifier(this, ver);
+                String url = Api.googleAuthorizeUrl(Api.pkceChallenge(ver));
+                runOnUiThread(() -> {
+                    try { startActivity(customTab(url)); }
+                    catch (Exception e) { msg.setText("Не удалось открыть браузер для входа через Google"); }
+                    googleBtn.setEnabled(true); googleBtn.setAlpha(1f);
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> { msg.setText("Не удалось войти через Google: " + Ui.err(e)); googleBtn.setEnabled(true); googleBtn.setAlpha(1f); });
+            }
+        });
+    }
+    /** Intent Custom Tabs без библиотеки androidx.browser: ACTION_VIEW + EXTRA_SESSION (null); без поддержки — обычный браузер. */
+    static Intent customTab(String url) {
+        Intent i = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url));
+        Bundle bx = new Bundle(); bx.putBinder("android.support.customtabs.extra.SESSION", null);
+        i.putExtras(bx);
+        i.putExtra("android.support.customtabs.extra.SHARE_STATE", 2);
+        i.addCategory(Intent.CATEGORY_BROWSABLE);
+        return i;
+    }
+    private void openChats() { startActivity(new Intent(this, ChatsActivity.class)); finish(); }
 
 
     @Override
@@ -86,6 +118,17 @@ public class LoginActivity extends AppCompatActivity {
         action = Site.button(this, "Войти");
         LinearLayout.LayoutParams al = new LinearLayout.LayoutParams(-1, Ui.dp(this, 46)); al.topMargin = Ui.dp(this, 16);
         root.addView(action, al);
+        // v11: «или» + «Войти через Google» (как #googleSep/#googleBtn сайта), видны только если /auth/v1/settings → external.google
+        googleSep = Site.orSep(this); googleSep.setVisibility(android.view.View.GONE);
+        LinearLayout.LayoutParams gsl = new LinearLayout.LayoutParams(-1, -2); gsl.topMargin = gsl.bottomMargin = Ui.dp(this, 12);
+        root.addView(googleSep, gsl);
+        googleBtn = Site.googleButton(this); googleBtn.setVisibility(android.view.View.GONE);
+        root.addView(googleBtn, new LinearLayout.LayoutParams(-1, Ui.dp(this, 40)));
+        googleBtn.setOnClickListener(v -> google());
+        boolean cached = getSharedPreferences("ui", 0).getBoolean("google_on", false);
+        showGoogle(cached);
+        io.execute(() -> { Boolean en = Api.get(this).googleEnabled(); if (en != null) { getSharedPreferences("ui", 0).edit().putBoolean("google_on", en).apply(); runOnUiThread(() -> showGoogle(en)); } });
+        String gErr = getIntent() == null ? null : getIntent().getStringExtra("google_error");
         toggle = Site.link(this, "Нет аккаунта? Регистрация");
         LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(-2, Ui.dp(this, 44)); tl.topMargin = Ui.dp(this, 8);
         root.addView(toggle, tl);
@@ -100,6 +143,7 @@ public class LoginActivity extends AppCompatActivity {
         Ui.fitSystemBars(this, sv);
         getWindow().setStatusBarColor(Site.page(this));
         startQr();
+        if (gErr != null) msg.setText(gErr);
 
         toggle.setOnClickListener(v -> {
             register = !register;
@@ -135,7 +179,7 @@ public class LoginActivity extends AppCompatActivity {
                         action.setEnabled(true);
                     });
                 } else {
-                    api.signIn(e, p);
+                    if (!api.beforeSignIn()) api.signIn(e, p);
                     runOnUiThread(() -> {
                         startActivity(new Intent(this, ChatsActivity.class));
                         finish();

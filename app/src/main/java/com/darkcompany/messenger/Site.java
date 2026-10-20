@@ -473,4 +473,28 @@ final class Site {
         v.setOnTouchListener((x, e) -> { if (e.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) { lastTouch[0] = e.getRawX(); lastTouch[1] = e.getRawY(); } return false; });
     }
     static String plural(int n, String a, String b, String c) { int m = n % 10, h = n % 100; return m == 1 && h != 11 ? a : m >= 2 && m <= 4 && (h < 12 || h > 14) ? b : c; }
+
+    /** .or-sep сайта: линия — «или» 13px text-secondary — линия, gap 10, margin 12 0. */
+    static LinearLayout orSep(Context c) {
+        LinearLayout r = new LinearLayout(c); r.setOrientation(LinearLayout.HORIZONTAL); r.setGravity(Gravity.CENTER_VERTICAL);
+        for (int i = 0; i < 3; i++) {
+            if (i == 1) { TextView t = label(c, "или", 13f, text2(c), 400); LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2); lp.leftMargin = lp.rightMargin = Ui.dp(c, 10); r.addView(t, lp); continue; }
+            View v = new View(c); v.setBackgroundColor(divider(c)); r.addView(v, new LinearLayout.LayoutParams(0, Math.max(1, Ui.dp(c, 1)), 1f));
+        }
+        return r;
+    }
+    static boolean night(Context c) { return (c.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES; }
+    /** .gsi сайта (кнопка Google): высота 40, r20, светлая — фон #fff, рамка #747775, текст #1f1f1f; тёмная — #131314 / #8e918f / #e3e3e3;
+     *  значок G 18 + «Войти через Google» 14px/500, gap 10. */
+    static TextView googleButton(Context c) {
+        boolean dk = night(c);
+        TextView b = label(c, "Войти через Google", 14f, dk ? 0xFFE3E3E3 : 0xFF1F1F1F, 500);
+        GradientDrawable g = new GradientDrawable(); g.setColor(dk ? 0xFF131314 : 0xFFFFFFFF); g.setCornerRadius(Ui.dp(c, 20));
+        g.setStroke(Math.max(1, Ui.dp(c, 1)), dk ? 0xFF8E918F : 0xFF747775);
+        b.setBackground(g); b.setGravity(Gravity.CENTER); b.setPadding(Ui.dp(c, 12), 0, Ui.dp(c, 12), 0);
+        android.graphics.drawable.Drawable gi = c.getDrawable(R.drawable.ic_google_g);
+        if (gi != null) { gi.setBounds(0, 0, Ui.dp(c, 18), Ui.dp(c, 18)); b.setCompoundDrawables(gi, null, null, null); b.setCompoundDrawablePadding(Ui.dp(c, 10)); }
+        b.setClickable(true); b.setFocusable(true); b.setContentDescription("Войти через Google");
+        return b;
+    }
 }
