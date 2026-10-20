@@ -27,4 +27,5 @@
     <color name="site_inmeta">#8A8DA0</color>
     <color name="site_divider">#12FFFFFF</color>
     <color name="site_danger">#E53935</color>
+    <color name="site_page">#0A0C10</color>
 </resources>

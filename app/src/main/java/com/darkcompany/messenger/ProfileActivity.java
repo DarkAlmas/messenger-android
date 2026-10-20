@@ -6,7 +6,6 @@ import android.view.View;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -49,59 +48,130 @@ public class ProfileActivity extends AppCompatActivity {
         });
     });
 
+    private TextView nameV, nickV, bioV, counter;
+    private LinearLayout editCard;
+    private EditText letterIn;
+    private int chosen;
+    private final java.util.List<View> swatches = new java.util.ArrayList<>();
+
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         if (!Api.get(this).hasSession()) { finish(); return; }
-        setTitle("Профиль");
-        if (getSupportActionBar() != null) getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         letter = Avatars.myLetter(this);
         color = Avatars.myColor(this);
-        LinearLayout col = Ui.column(this);
-        col.setGravity(Gravity.CENTER_HORIZONTAL);
+        chosen = color;
+        LinearLayout col = Site.scaffold(this, Site.pageTitle(this, "Профиль", "edit", "Изменить профиль", v -> toggleEdit()), 2);
+        // .profile-head: большой аватар 120dp с кнопкой-камерой, имя, «в сети»
+        LinearLayout head = new LinearLayout(this); head.setOrientation(LinearLayout.VERTICAL); head.setGravity(Gravity.CENTER_HORIZONTAL);
+        head.setPadding(0, Ui.dp(this, 24), 0, Ui.dp(this, 8));
+        FrameLayout ab = new FrameLayout(this);
         avatarBox = new FrameLayout(this);
-        col.addView(avatarBox, new LinearLayout.LayoutParams(Ui.dp(this, 112), Ui.dp(this, 112)));
-        LinearLayout btns = new LinearLayout(this);
-        btns.setGravity(Gravity.CENTER);
-        View photo = Ui.textButton(this, "📷 Фото");
-        photo.setOnClickListener(v -> pick.launch("image/*"));
-        View auto = Ui.textButton(this, "🔤 Буква и цвет");
-        auto.setOnClickListener(v -> editAuto());
-        btns.addView(photo); btns.addView(auto);
-        LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(-2, -2); bl.topMargin = Ui.dp(this, 8);
-        col.addView(btns, bl);
-        name = Ui.input(this, "Имя (видно собеседникам)");
-        nick = Ui.input(this, "Никнейм (для поиска, латиница)");
+        ab.addView(avatarBox, new FrameLayout.LayoutParams(Ui.dp(this, 120), Ui.dp(this, 120), Gravity.CENTER));
+        TextView cam = Site.icon(this, "photo_camera", 20, 0xFFFFFFFF);
+        cam.setBackground(Site.round(Site.primary(this), Ui.dp(this, 20)));
+        cam.setContentDescription("Загрузить фото"); cam.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+        cam.setOnClickListener(v -> pick.launch("image/*"));
+        FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40), Gravity.END | Gravity.BOTTOM);
+        cl.setMargins(0, 0, 0, Ui.dp(this, 2));
+        ab.addView(cam, cl);
+        head.addView(ab, new LinearLayout.LayoutParams(Ui.dp(this, 132), Ui.dp(this, 124)));
+        nameV = Site.label(this, "", 24, Site.text(this), true); nameV.setGravity(Gravity.CENTER); nameV.setPadding(Ui.dp(this, 16), Ui.dp(this, 14), Ui.dp(this, 16), 0);
+        head.addView(nameV, new LinearLayout.LayoutParams(-1, -2));
+        TextView st = Site.label(this, "в сети", 15, Site.primary(this), false); st.setGravity(Gravity.CENTER);
+        head.addView(st, new LinearLayout.LayoutParams(-1, -2));
+        col.addView(head);
+
+        LinearLayout g = Site.group(this, col, "Информация");
+        LinearLayout r1 = Site.row(this, g, "alternate_email", "@", "Имя пользователя", null, null);
+        nickV = r1.findViewWithTag("label");
+        LinearLayout r2 = Site.row(this, g, "info", "Не указано", "О себе", null, null);
+        bioV = r2.findViewWithTag("label");
+        note = Site.hint(this, "");
+        note.setVisibility(View.GONE);
+        col.addView(note);
+
+        // .edit-card «Редактирование» (по ✎)
+        LinearLayout wrap = new LinearLayout(this); wrap.setOrientation(LinearLayout.VERTICAL); wrap.setVisibility(View.GONE);
+        col.addView(wrap);
+        editCard = wrap;
+        LinearLayout ec = Site.group(this, wrap, "Редактирование");
+        ec.setPadding(Ui.dp(this, 16), Ui.dp(this, 12), Ui.dp(this, 16), Ui.dp(this, 16));
+        name = Ui.input(this, "Имя");
+        name.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(64)});
+        nick = Ui.input(this, "Никнейм");
+        nick.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(32)});
         bio = Ui.input(this, "О себе");
-        bio.setSingleLine(false); bio.setMaxLines(4);
+        bio.setSingleLine(false); bio.setMaxLines(5);
         bio.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(300)});
-        for (EditText e : new EditText[]{name, nick, bio}) col.addView(Ui.field(e), Ui.spaced(this));
+        letterIn = Ui.input(this, "Буквы на аватаре (1–2 символа, пусто — первая буква имени)");
+        letterIn.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(2)});
+        letterIn.setText(letter);
+        ec.addView(Ui.field(name), Ui.spaced(this));
+        ec.addView(Ui.field(nick), Ui.spaced(this));
+        ec.addView(Ui.field(bio), Ui.spaced(this));
+        counter = Site.label(this, "0/300", 12, Site.text2(this), false); counter.setGravity(Gravity.END);
+        ec.addView(counter, new LinearLayout.LayoutParams(-1, -2));
+        bio.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence a, int b1, int c, int d) { }
+            public void onTextChanged(CharSequence a, int b1, int c, int d) { counter.setText(a.length() + "/300"); }
+            public void afterTextChanged(android.text.Editable e) { }
+        });
+        ec.addView(Ui.field(letterIn), Ui.spaced(this));
+        ec.addView(Site.label(this, "Цвет фона", 13, Site.text2(this), false), Ui.spaced(this));
+        android.widget.GridLayout grid = new android.widget.GridLayout(this);
+        grid.setColumnCount(6);
+        for (int c0 : Avatars.PALETTE) {
+            View sw = new View(this);
+            android.graphics.drawable.GradientDrawable gd = new android.graphics.drawable.GradientDrawable();
+            gd.setShape(android.graphics.drawable.GradientDrawable.OVAL); gd.setColor(c0);
+            gd.setStroke(c0 == chosen ? Ui.dp(this, 3) : 0, Site.text(this));
+            sw.setBackground(gd); sw.setTag(c0);
+            sw.setContentDescription(String.format("#%06X", c0 & 0xFFFFFF));
+            sw.setOnClickListener(v -> { chosen = (Integer) v.getTag(); paintSwatches(); });
+            swatches.add(sw);
+            android.widget.GridLayout.LayoutParams lp = new android.widget.GridLayout.LayoutParams();
+            lp.width = Ui.dp(this, 36); lp.height = Ui.dp(this, 36);
+            lp.setMargins(Ui.dp(this, 4), Ui.dp(this, 4), Ui.dp(this, 4), Ui.dp(this, 4));
+            grid.addView(sw, lp);
+        }
+        ec.addView(grid);
+        View rm = Ui.textButton(this, "Убрать фото");
+        rm.setOnClickListener(v -> applyAuto(true));
+        ec.addView(rm, Ui.spaced(this));
         View save = Ui.button(this, "Сохранить");
         save.setOnClickListener(v -> save());
-        col.addView(save, Ui.spaced(this));
-        note = Ui.text(this, "", 13);
-        note.setTextColor(Ui.gray());
-        col.addView(note, Ui.spaced(this));
-        TextView priv = Ui.text(this, "Имя, никнейм, «о себе» и аватар видны другим пользователям и не шифруются сквозным шифрованием. Сообщения и файлы — шифруются всегда.", 12);
-        priv.setTextColor(Ui.gray());
-        col.addView(priv, Ui.spaced(this));
-        ScrollView sv = new ScrollView(this);
-        sv.addView(col);
-        setContentView(sv);
-        Ui.fitSystemBars(this, sv);
+        ec.addView(save, Ui.spaced(this));
+
+        col.addView(Site.hint(this, "Имя, никнейм, «О себе» и аватар видны другим пользователям и не шифруются сквозным шифрованием. Сообщения и файлы шифруются всегда."));
+        paintInfo(Avatars.merged(this, Api.get(this).uid()));
         drawAvatar();
         io.execute(this::load);
     }
 
+    private void toggleEdit() { editCard.setVisibility(editCard.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE); }
+    private void paintSwatches() {
+        for (View o : swatches) ((android.graphics.drawable.GradientDrawable) o.getBackground()).setStroke((Integer) o.getTag() == chosen ? Ui.dp(this, 3) : 0, Site.text(this));
+    }
+    private void paintInfo(JSONObject p) {
+        String un = p.optString("username", "");
+        String dn = p.isNull("display_name") ? "" : p.optString("display_name", "");
+        String bi = p.has("bio") && !p.isNull("bio") ? p.optString("bio") : Avatars.prefs(this).getString("bio", "");
+        nameV.setText(dn.isEmpty() ? un : dn);
+        nickV.setText("@" + un);
+        bioV.setText(bi.isEmpty() ? "Не указано" : bi);
+        bioV.setTextColor(bi.isEmpty() ? Site.text2(this) : Site.text(this));
+    }
+
     @Override public boolean onSupportNavigateUp() { finish(); return true; }
 
-    private void setNote(String s) { runOnUiThread(() -> note.setText(s)); }
+    private void setNote(String s) { runOnUiThread(() -> { note.setText(s); note.setVisibility(s.isEmpty() ? View.GONE : View.VISIBLE); }); }
 
     private void drawAvatar() {
         avatarBox.removeAllViews();
         String uid = Api.get(this).uid();
-        avatarBox.addView(Avatars.view(this, uid, name == null || name.getText().length() == 0 ? (nick == null ? "?" : nick.getText().toString()) : name.getText().toString(), 112),
-                new FrameLayout.LayoutParams(-1, -1));
+        String n = nameV == null ? "?" : nameV.getText().toString();
+        avatarBox.addView(Avatars.view(this, uid, n.isEmpty() ? "?" : n, 120), new FrameLayout.LayoutParams(-1, -1));
     }
 
     private void load() {
@@ -115,65 +185,44 @@ public class ProfileActivity extends AppCompatActivity {
                 nick.setText(p.optString("username"));
                 String lb = Avatars.prefs(this).getString("bio", "");
                 bio.setText(p.has("bio") && !p.isNull("bio") ? p.optString("bio") : lb);
+                paintInfo(Avatars.merged(this, uid));
                 drawAvatar();
                 if (Boolean.FALSE.equals(Avatars.serverHasFields))
-                    note.setText("«О себе» и аватар пока хранятся только на этом телефоне: сервер ещё не обновлён.");
+                    setNote("Сервер пока не поддерживает фото, цвет и «о себе». Имя и никнейм менять можно.");
             });
         } catch (Exception e) { Ui.toast(this, Ui.err(e)); }
     }
 
-    private void editAuto() {
-        LinearLayout c = Ui.column(this);
-        final EditText l = Ui.input(this, "Буква или эмодзи (1–2 символа)");
-        l.setText(letter);
-        l.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(4)});
-        c.addView(Ui.field(l));
-        final int[] chosen = {color};
-        android.widget.GridLayout grid = new android.widget.GridLayout(this);
-        grid.setColumnCount(6);
-        final java.util.List<View> sw = new java.util.ArrayList<>();
-        for (int col : Avatars.PALETTE) {
-            View s = new View(this);
-            android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
-            g.setShape(android.graphics.drawable.GradientDrawable.OVAL); g.setColor(col);
-            g.setStroke(Ui.dp(this, col == chosen[0] ? 3 : 0), 0xFFFFFFFF);
-            s.setBackground(g);
-            s.setContentDescription(String.format("#%06X", col & 0xFFFFFF));
-            s.setOnClickListener(v -> {
-                chosen[0] = col;
-                for (View o : sw) ((android.graphics.drawable.GradientDrawable) o.getBackground()).setStroke(o == v ? Ui.dp(this, 3) : 0, 0xFFFFFFFF);
-            });
-            sw.add(s);
-            android.widget.GridLayout.LayoutParams lp = new android.widget.GridLayout.LayoutParams();
-            lp.width = Ui.dp(this, 40); lp.height = Ui.dp(this, 40);
-            lp.setMargins(Ui.dp(this, 5), Ui.dp(this, 5), Ui.dp(this, 5), Ui.dp(this, 5));
-            grid.addView(s, lp);
-        }
-        c.addView(grid, Ui.spaced(this));
-        new com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle("Автоаватар").setView(c)
-                .setPositiveButton("Готово", (d, w) -> {
-                    letter = l.getText().toString().trim();
-                    color = chosen[0];
-                    Avatars.prefs(this).edit().putString("letter", letter).putInt("color", color).apply();
-                    Avatars.myPhotoFile(this).delete(); // автоаватар вместо фото
-                    drawAvatar();
-                    io.execute(() -> {
-                        try {
-                            JSONObject cur = Avatars.profiles.get(Api.get(this).uid());
-                            String old = cur == null || cur.isNull("avatar_url") ? "" : cur.optString("avatar_url");
-                            Api.get(this).update("profiles?id=eq." + Api.get(this).uid(), new JSONObject().put("avatar_letter", letter.isEmpty() ? JSONObject.NULL : letter)
-                                    .put("avatar_color", String.format("#%06X", color & 0xFFFFFF)).put("avatar_url", JSONObject.NULL));
-                            Avatars.deletePhoto(this, old);
-                            Avatars.refresh(this, Collections.singleton(Api.get(this).uid()), 0);
-                        } catch (Exception e) { setNote("Аватар сохранён на этом телефоне; на сервер — после его обновления."); }
-                    });
-                }).setNegativeButton("Отмена", null).show();
+    /** Буква + цвет из карточки редактирования; removePhoto — «Убрать фото». */
+    private void applyAuto(boolean removePhoto) {
+        String l = letterIn.getText().toString().trim();
+        if (l.equals(letter) && chosen == color && !removePhoto) return;
+        letter = l; color = chosen;
+        Avatars.prefs(this).edit().putString("letter", letter).putInt("color", color).apply();
+        Avatars.myPhotoFile(this).delete();
+        drawAvatar();
+        io.execute(() -> {
+            try {
+                JSONObject cur = Avatars.profiles.get(Api.get(this).uid());
+                String old = cur == null || cur.isNull("avatar_url") ? "" : cur.optString("avatar_url");
+                Api.get(this).update("profiles?id=eq." + Api.get(this).uid(), new JSONObject().put("avatar_letter", letter.isEmpty() ? JSONObject.NULL : letter)
+                        .put("avatar_color", String.format("#%06X", color & 0xFFFFFF)).put("avatar_url", JSONObject.NULL));
+                Avatars.deletePhoto(this, old);
+                Avatars.refresh(this, Collections.singleton(Api.get(this).uid()), 0);
+                runOnUiThread(this::drawAvatar);
+                if (removePhoto) Ui.toast(this, "Фото удалено");
+            } catch (Exception e) { setNote("Аватар сохранён на этом телефоне; на сервер — после его обновления."); }
+        });
     }
 
     private void save() {
         final String n = name.getText().toString().trim(), u = nick.getText().toString().trim().replaceFirst("^@+", "").toLowerCase(java.util.Locale.ROOT),
                 bi = bio.getText().toString().trim();
-        if (!u.matches("[a-z0-9_]{3,32}")) { Ui.toast(this, "Никнейм: 3–32 символа, латиница, цифры, _"); return; }
+        if (n.isEmpty() || n.length() > 64) { Ui.toast(this, "Имя: от 1 до 64 символов"); return; }
+        JSONObject curP = Avatars.profiles.get(Api.get(this).uid());
+        boolean nickChanged = curP == null || !u.equals(curP.optString("username"));
+        if (nickChanged && !u.matches("[a-z0-9_]{5,32}")) { Ui.toast(this, "От 5 до 32 символов: латиница, цифры и _"); return; }
+        applyAuto(false);
         Avatars.prefs(this).edit().putString("bio", bi).apply();
         io.execute(() -> {
             try {
@@ -184,7 +233,7 @@ public class ProfileActivity extends AppCompatActivity {
                 catch (Exception e) { extra = " «О себе» сохранено на телефоне — сервер ещё не поддерживает это поле."; }
                 Avatars.refresh(this, Collections.singleton(api.uid()), 0);
                 Ui.toast(this, "Профиль сохранён." + extra);
-                runOnUiThread(this::drawAvatar);
+                runOnUiThread(() -> { paintInfo(Avatars.merged(this, api.uid())); drawAvatar(); editCard.setVisibility(View.GONE); });
             } catch (Exception e) {
                 String m = Ui.err(e);
                 Ui.toast(this, m.contains("duplicate") || m.contains("unique") ? "Этот никнейм уже занят" : "Не сохранено: " + m);

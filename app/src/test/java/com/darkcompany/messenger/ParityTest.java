@@ -77,4 +77,14 @@ public class ParityTest {
         assertFalse(Updater.allowedHost("https://github.com.evil.com/x"));
         assertFalse(Updater.allowedHost("https://evil.com/github.com"));
     }
+
+    @org.junit.Test public void sniffMedia() {
+        byte[] webm = new byte[64]; webm[0]=0x1A; webm[1]=0x45; webm[2]=(byte)0xDF; webm[3]=(byte)0xA3; System.arraycopy("webm".getBytes(),0,webm,20,4);
+        org.junit.Assert.assertEquals(".webm", MediaPlay.sniffExt(webm, "audio/mp4"));
+        byte[] mkv = webm.clone(); System.arraycopy("matroska".getBytes(),0,mkv,20,8);
+        org.junit.Assert.assertEquals(".mkv", MediaPlay.sniffExt(mkv, "video/webm"));
+        byte[] mp4 = new byte[16]; System.arraycopy("ftypisom".getBytes(),0,mp4,4,8);
+        org.junit.Assert.assertEquals(".mp4", MediaPlay.sniffExt(mp4, "audio/webm"));
+        org.junit.Assert.assertEquals(".webm", MediaPlay.sniffExt(new byte[3], "audio/webm"));
+    }
 }

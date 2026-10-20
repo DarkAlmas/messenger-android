@@ -71,6 +71,28 @@ public class ShotTest {
         root.addView(Site.bottomNav(a, 0), new LinearLayout.LayoutParams(-1, Ui.dp(a, 56)));
         snap(a, root, "native-chats.png");
     }
+    private static void fakeSession(android.content.Context c) throws Exception {
+        Api api = Api.get(c);
+        java.lang.reflect.Field f = Api.class.getDeclaredField("sp"); f.setAccessible(true);
+        ((android.content.SharedPreferences) f.get(api)).edit().putString("refresh", "x").putString("access", "x").putString("uid", "u1").putString("email", "dima@example.com").apply();
+        Avatars.profiles.put("u1", new JSONObject("{\"id\":\"u1\",\"username\":\"dark44\",\"display_name\":\"Дмитрий\",\"avatar_color\":\"#1ABC9C\",\"avatar_letter\":\"D\"}"));
+        android.content.Context ac = c.getApplicationContext();
+        Avatars.prefs(ac).edit().putInt("theme", 0).apply();
+    }
+    @Test @Config(qualifiers = "w412dp-h892dp-night-xxhdpi") public void settingsScreen() throws Exception {
+        fakeSession(org.robolectric.RuntimeEnvironment.getApplication());
+        SettingsActivity a = Robolectric.buildActivity(SettingsActivity.class).setup().get();
+        snap(a, a.getWindow().getDecorView(), "native-settings.png");
+    }
+    @Test @Config(qualifiers = "w412dp-h892dp-night-xxhdpi") public void profileScreen() throws Exception {
+        fakeSession(org.robolectric.RuntimeEnvironment.getApplication());
+        ProfileActivity a = Robolectric.buildActivity(ProfileActivity.class).setup().get();
+        snap(a, a.getWindow().getDecorView(), "native-profile.png");
+    }
+    @Test @Config(qualifiers = "w412dp-h892dp-night-xxhdpi") public void loginScreen() throws Exception {
+        LoginActivity a = Robolectric.buildActivity(LoginActivity.class).setup().get();
+        snap(a, a.getWindow().getDecorView(), "native-login.png");
+    }
     static void snap(android.app.Activity a, View v, String name) throws Exception {
         int w = Ui.dp(a, 412), hh = Ui.dp(a, 892);
         v.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(hh, View.MeasureSpec.EXACTLY));

@@ -76,17 +76,18 @@ final class Site {
         nav.setOrientation(LinearLayout.HORIZONTAL); nav.setGravity(Gravity.CENTER_VERTICAL);
         nav.setBackgroundColor(surface(a));
         nav.setElevation(Ui.dp(a, 3));
-        String[][] items = {{"chat", "Чаты"}, {"person", "Профиль"}, {"settings", "Настройки"}};
+        String[][] items = {{"chat", "Чаты"}, {"settings", "Настройки"}, {"person", "Профиль"}};
         for (int i = 0; i < items.length; i++) {
             final int idx = i;
             android.widget.FrameLayout cell = new android.widget.FrameLayout(a);
             TextView ic = icon(a, items[i][0], 24, i == active ? onPrimaryContainer(a) : text2(a));
             if (i == active) ic.setBackground(round(primaryContainer(a), Ui.dp(a, 16)));
-            cell.addView(ic, new android.widget.FrameLayout.LayoutParams(Ui.dp(a, 56), Ui.dp(a, 32), Gravity.CENTER));
+            ic.setGravity(Gravity.CENTER);
+            cell.addView(ic, new android.widget.FrameLayout.LayoutParams(Ui.dp(a, 64), Ui.dp(a, 32), Gravity.CENTER));
             cell.setContentDescription(items[i][1]);
             cell.setOnClickListener(v -> {
                 if (idx == active) return;
-                Class<?> k = idx == 0 ? ChatsActivity.class : idx == 1 ? ProfileActivity.class : SettingsActivity.class;
+                Class<?> k = idx == 0 ? ChatsActivity.class : idx == 1 ? SettingsActivity.class : ProfileActivity.class;
                 a.startActivity(new android.content.Intent(a, k).addFlags(android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
             });
             nav.addView(cell, new LinearLayout.LayoutParams(0, Ui.dp(a, 56), 1f));
@@ -193,5 +194,128 @@ final class Site {
         if (same(d, y)) return "был(а) вчера в " + hm;
         if (d.get(java.util.Calendar.YEAR) == n.get(java.util.Calendar.YEAR)) return "был(а) " + d.get(java.util.Calendar.DAY_OF_MONTH) + " " + MON_SHORT[d.get(java.util.Calendar.MONTH)] + " в " + hm;
         return String.format(java.util.Locale.ROOT, "был(а) %02d.%02d.%d", d.get(java.util.Calendar.DAY_OF_MONTH), d.get(java.util.Calendar.MONTH) + 1, d.get(java.util.Calendar.YEAR));
+    }
+
+    // ---------- страницы «Настройки» / «Профиль» (.page, .settings-group, .settings-row) ----------
+    static int page(Context c) { return col(c, R.color.site_page); }
+    static int danger(Context c) { return col(c, R.color.site_danger); }
+
+    /** Шапка страницы: крупный заголовок 22sp слева, справа необязательная иконка. */
+    static LinearLayout pageTitle(Context c, String title, String rightIcon, String rightLabel, View.OnClickListener l) {
+        LinearLayout b = new LinearLayout(c);
+        b.setGravity(Gravity.CENTER_VERTICAL);
+        b.setBackgroundColor(surface(c));
+        b.setPadding(Ui.dp(c, 20), 0, Ui.dp(c, 8), 0);
+        b.setMinimumHeight(Ui.dp(c, 64));
+        TextView t = label(c, title, 24, text(c), false);
+        b.addView(t, new LinearLayout.LayoutParams(0, -2, 1f));
+        if (rightIcon != null) {
+            TextView ib = iconButton(c, rightIcon, rightLabel, l);
+            ib.setTextColor(text(c));
+            b.addView(ib);
+        }
+        return b;
+    }
+
+    /** Карточка группы: скруглённая 16dp, заголовок секции — фиолетовый 14sp снаружи сверху (как на скриншоте). */
+    static LinearLayout group(Context c, LinearLayout parent, String title) {
+        if (title != null) {
+            TextView t = label(c, title, 14, primary(c), true);
+            t.setPadding(Ui.dp(c, 20), Ui.dp(c, 14), Ui.dp(c, 20), Ui.dp(c, 10));
+            parent.addView(t);
+        }
+        LinearLayout g = new LinearLayout(c);
+        g.setOrientation(LinearLayout.VERTICAL);
+        g.setBackground(round(container(c), Ui.dp(c, 16)));
+        g.setClipToOutline(true);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.setMargins(Ui.dp(c, 20), 0, Ui.dp(c, 20), Ui.dp(c, 4));
+        parent.addView(g, lp);
+        return g;
+    }
+
+    /** Строка .settings-row: иконка 24 (серая), подпись 16sp (+ small), значение справа серым 14sp. */
+    static LinearLayout row(Context c, LinearLayout group, String icon, String label, String sub, String value, View.OnClickListener l) {
+        if (group.getChildCount() > 0) {
+            View d = new View(c); d.setBackgroundColor(col(c, R.color.site_divider));
+            LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(-1, Math.max(1, Ui.dp(c, 1)));
+            dl.leftMargin = Ui.dp(c, 72);
+            group.addView(d, dl);
+        }
+        LinearLayout r = new LinearLayout(c);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setMinimumHeight(Ui.dp(c, 68));
+        r.setPadding(Ui.dp(c, 20), Ui.dp(c, 8), Ui.dp(c, 20), Ui.dp(c, 8));
+        boolean danger = "logout".equals(icon) && label.equals("Выйти");
+        TextView ic = icon(c, icon, 24, danger ? danger(c) : text2(c));
+        ic.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        r.addView(ic, new LinearLayout.LayoutParams(Ui.dp(c, 52), -2));
+        LinearLayout tc = new LinearLayout(c); tc.setOrientation(LinearLayout.VERTICAL);
+        TextView lt = label(c, label, 17, danger ? danger(c) : text(c), false);
+        lt.setTag("label");
+        tc.addView(lt);
+        if (sub != null) { TextView st = label(c, sub, 13, text2(c), false); st.setTag("sub"); tc.addView(st); }
+        r.addView(tc, new LinearLayout.LayoutParams(0, -2, 1f));
+        if (value != null) {
+            TextView v = label(c, value, 14, text2(c), false);
+            v.setTag("value"); v.setSingleLine(true); v.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            v.setMaxWidth(Ui.dp(c, 170)); v.setPadding(Ui.dp(c, 8), 0, 0, 0);
+            r.addView(v);
+        }
+        if (l != null) {
+            r.setOnClickListener(l);
+            android.util.TypedValue tv = new android.util.TypedValue();
+            c.getTheme().resolveAttribute(android.R.attr.selectableItemBackground, tv, true);
+            r.setForeground(c.getDrawable(tv.resourceId));
+        }
+        group.addView(r);
+        return r;
+    }
+
+    static void setValue(View row, String v) { TextView t = row.findViewWithTag("value"); if (t != null) t.setText(v); }
+    static void setSub(View row, String v) { TextView t = row.findViewWithTag("sub"); if (t != null) t.setText(v); }
+
+    /** Сегмент-переключатель (.seg): пилюли, активная — primary-container. */
+    static LinearLayout seg(Context c, String[] labels, int active, java.util.function.IntConsumer pick) {
+        LinearLayout s = new LinearLayout(c);
+        s.setPadding(Ui.dp(c, 16), Ui.dp(c, 4), Ui.dp(c, 16), Ui.dp(c, 12));
+        for (int i = 0; i < labels.length; i++) {
+            final int idx = i;
+            TextView b = label(c, labels[i], 14, i == active ? onPrimaryContainer(c) : text(c), i == active);
+            b.setGravity(Gravity.CENTER);
+            b.setBackground(round(i == active ? primaryContainer(c) : page(c), Ui.dp(c, 18)));
+            b.setOnClickListener(v -> pick.accept(idx));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, Ui.dp(c, 36), 1f);
+            lp.setMargins(Ui.dp(c, 4), 0, Ui.dp(c, 4), 0);
+            s.addView(b, lp);
+        }
+        return s;
+    }
+
+    /** Подсказка мелким серым (.hint.small.pad). */
+    static TextView hint(Context c, String s) {
+        TextView t = label(c, s, 14, text2(c), false);
+        t.setPadding(Ui.dp(c, 20), Ui.dp(c, 12), Ui.dp(c, 20), Ui.dp(c, 12));
+        t.setLineSpacing(0, 1.1f);
+        return t;
+    }
+
+    /** Каркас страницы: шапка + прокручиваемое тело + нижняя навигация. Возвращает колонку тела. */
+    static LinearLayout scaffold(androidx.appcompat.app.AppCompatActivity a, View title, int nav) {
+        LinearLayout root = new LinearLayout(a);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(page(a));
+        root.addView(title, new LinearLayout.LayoutParams(-1, -2));
+        android.widget.ScrollView sv = new android.widget.ScrollView(a);
+        LinearLayout body = new LinearLayout(a);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setPadding(0, Ui.dp(a, 8), 0, Ui.dp(a, 24));
+        sv.addView(body);
+        root.addView(sv, new LinearLayout.LayoutParams(-1, 0, 1f));
+        root.addView(bottomNav(a, nav), new LinearLayout.LayoutParams(-1, Ui.dp(a, 72)));
+        a.setContentView(root);
+        Ui.fitSystemBars(a, root);
+        a.getWindow().setStatusBarColor(surface(a));
+        return body;
     }
 }

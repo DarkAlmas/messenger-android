@@ -107,7 +107,8 @@ final class Avatars {
         GradientDrawable g = new GradientDrawable();
         g.setShape(GradientDrawable.OVAL);
         int col = colorFor(p, seed);
-        g.setColor(col); // сплошной цвет, как .ava на сайте
+        g.setOrientation(GradientDrawable.Orientation.TL_BR); // градиент, как на скриншотах Димы
+        g.setColors(new int[]{lighten(col), col});
         a.setBackground(g);
         return a;
     }
@@ -255,7 +256,7 @@ final class Avatars {
     }
 
     // ---------- тема ----------
-    static final String[] THEMES = {"Тёмная", "Светлая", "Как в системе"};
+    static final String[] THEMES = {"Тёмная", "Светлая", "Системная"};
     static int themeIndex(Context c) { return prefs(c).getInt("theme", 0); }
     static void applyTheme(Context c) {
         int i = themeIndex(c);

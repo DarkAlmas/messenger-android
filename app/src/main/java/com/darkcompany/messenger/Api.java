@@ -76,6 +76,7 @@ public final class Api {
     private volatile boolean loggingOut = false;
     public boolean hasSession() { return !loggingOut && sp.getString("refresh", null) != null; }
     public String uid() { return sp.getString("uid", ""); }
+    public String email() { return sp.getString("email", ""); }
     /**
      * Отзывает сессию на сервере (POST /auth/v1/logout?scope=local), затем стирает токены.
      * Если access-токен уже истёк (401) — обновляет его по refresh-токену и повторяет logout.
@@ -148,7 +149,8 @@ public final class Api {
     private void save(JSONObject o) throws Exception {
         sp.edit().putString("access", o.getString("access_token"))
                 .putString("refresh", o.getString("refresh_token"))
-                .putString("uid", o.getJSONObject("user").getString("id")).apply();
+                .putString("uid", o.getJSONObject("user").getString("id"))
+                .putString("email", o.getJSONObject("user").optString("email", sp.getString("email", ""))).apply();
     }
 
     private String send(Request.Builder rb) throws IOException {

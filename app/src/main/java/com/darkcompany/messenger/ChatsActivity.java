@@ -90,7 +90,6 @@ public class ChatsActivity extends AppCompatActivity {
         meBtn.setOnClickListener(v -> startActivity(new Intent(this, ProfileActivity.class)));
         meBtn.setPadding(Ui.dp(this, 4), 0, 0, 0);
         top.addView(meBtn, new LinearLayout.LayoutParams(0, -2, 1f));
-        top.addView(Site.iconButton(this, "more_vert", "Меню", this::moreMenu));
         root.addView(top);
         // «Чаты ( ◌ Соединение… )»
         LinearLayout tr = new LinearLayout(this); tr.setGravity(android.view.Gravity.CENTER_VERTICAL);
@@ -190,8 +189,19 @@ public class ChatsActivity extends AppCompatActivity {
         shownKeyErr = err;
     }
     @Override
+    protected void onNewIntent(Intent i) { super.onNewIntent(i); setIntent(i); }
+    /** Действия из «Настроек» (на сайте нет меню ⋮): новая группа, вход на сайте по QR. */
+    private void pendingAction() {
+        String a = getIntent() == null ? null : getIntent().getStringExtra("action");
+        if (a == null) return;
+        getIntent().removeExtra("action");
+        if (a.equals("new_group")) newGroup();
+        else if (a.equals("qr")) onOptionsItemSelected2(2);
+    }
+    @Override
     protected void onResume() {
         super.onResume(); visible = true;
+        pendingAction();
         Updater.resume(this);
         Updater.check(this, false);
         listH.removeCallbacks(listPoll); listH.post(listPoll); // новые чаты и сообщения появляются без перезахода
@@ -213,8 +223,9 @@ public class ChatsActivity extends AppCompatActivity {
     }
 
     @Override
-    public boolean onOptionsItemSelected(MenuItem it) {
-        switch (it.getItemId()) {
+    public boolean onOptionsItemSelected(MenuItem it) { return onOptionsItemSelected2(it.getItemId()) || super.onOptionsItemSelected(it); }
+    private boolean onOptionsItemSelected2(int itemId) {
+        switch (itemId) {
             case 1: newChat(); return true;
             case 2:
                 ScanOptions o = new ScanOptions();
@@ -235,7 +246,7 @@ public class ChatsActivity extends AppCompatActivity {
             case 7: Updater.check(this, true); return true;
             case 6: startActivity(new Intent(this, ProfileActivity.class)); return true;
         }
-        return super.onOptionsItemSelected(it);
+        return false;
     }
 
     private void logout() { logout(this); }
@@ -302,15 +313,6 @@ public class ChatsActivity extends AppCompatActivity {
                         .putExtra("title", "@" + nick).putExtra("kind", "direct").putExtra("peer_id", peer)));
             } catch (Exception e) { authFail(e); }
         });
-    }
-    private void moreMenu(android.view.View anchor) {
-        android.widget.PopupMenu pm = new android.widget.PopupMenu(this, anchor);
-        pm.getMenu().add(0, 4, 0, "Новая группа");
-        pm.getMenu().add(0, 2, 1, "Войти на сайте (QR)");
-        pm.getMenu().add(0, 7, 2, "Проверить обновления");
-        pm.getMenu().add(0, 3, 3, "Выйти");
-        pm.setOnMenuItemClickListener(this::onOptionsItemSelected);
-        pm.show();
     }
 
     private void newChat() {

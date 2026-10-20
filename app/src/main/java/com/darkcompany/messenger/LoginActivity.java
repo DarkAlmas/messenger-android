@@ -19,7 +19,21 @@ public class LoginActivity extends AppCompatActivity {
     private boolean register = false;
     private EditText email, password, username;
     private Button action, toggle;
-    private TextView msg;
+    private TextView msg, formTitle, pwHint;
+    private LinearLayout userBox;
+
+    private EditText siteInput(String hint) {
+        EditText e = new EditText(this);
+        e.setHint(hint); e.setSingleLine(true); e.setTextSize(16);
+        e.setTextColor(Site.text(this)); e.setHintTextColor(Site.text2(this));
+        android.graphics.drawable.GradientDrawable g = Site.round(Site.container(this), Ui.dp(this, 12));
+        g.setStroke(Math.max(1, Ui.dp(this, 1)), Site.col(this, R.color.site_divider));
+        e.setBackground(g);
+        e.setPadding(Ui.dp(this, 14), 0, Ui.dp(this, 14), 0);
+        return e;
+    }
+    private TextView caption(String s) { TextView t = Site.label(this, s, 13, Site.text2(this), false); t.setPadding(0, Ui.dp(this, 14), 0, Ui.dp(this, 6)); return t; }
+    private LinearLayout.LayoutParams fieldLp() { return new LinearLayout.LayoutParams(-1, Ui.dp(this, 50)); }
 
     @Override
     protected void onCreate(Bundle b) {
@@ -30,51 +44,65 @@ public class LoginActivity extends AppCompatActivity {
             finish();
             return;
         }
-        LinearLayout root = Ui.column(this);
-        root.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
-        root.setPadding(Ui.dp(this, 24), Ui.dp(this, 56), Ui.dp(this, 24), Ui.dp(this, 24));
-        root.addView(Ui.logo(this), new LinearLayout.LayoutParams(Ui.dp(this, 88), Ui.dp(this, 88)));
-        TextView ttl = Ui.text(this, "Мессенджер", 30);
-        ttl.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        ttl.setGravity(android.view.Gravity.CENTER);
-        ttl.setPadding(0, Ui.dp(this, 16), 0, Ui.dp(this, 4));
-        root.addView(ttl, Ui.match());
-        TextView sub = Ui.text(this, "Быстрые и защищённые чаты", 14);
-        sub.setGravity(android.view.Gravity.CENTER);
-        sub.setTextColor(Ui.gray());
-        sub.setPadding(0, 0, 0, Ui.dp(this, 24));
-        root.addView(sub, Ui.match());
-        email = Ui.input(this, "Почта");
+        // Как #auth .card на сайте: «Мессенджер», «Почта и пароль», подписи над полями, синяя кнопка-пилюля
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setBackgroundColor(Site.page(this));
+        page.setPadding(Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16));
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackground(Site.round(Site.surface(this), Ui.dp(this, 24)));
+        root.setElevation(Ui.dp(this, 1));
+        root.setPadding(Ui.dp(this, 28), Ui.dp(this, 28), Ui.dp(this, 28), Ui.dp(this, 28));
+        page.addView(root, new LinearLayout.LayoutParams(-1, -2));
+        TextView ttl = Site.label(this, "Мессенджер", 26, Site.text(this), true);
+        root.addView(ttl);
+        formTitle = Site.label(this, "Почта и пароль", 18, Site.text(this), true);
+        formTitle.setPadding(0, Ui.dp(this, 24), 0, Ui.dp(this, 4));
+        root.addView(formTitle);
+        email = siteInput("name@example.com");
         email.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        password = Ui.input(this, "Пароль (не короче 10 символов)");
+        password = siteInput("");
         password.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        username = Ui.input(this, "Никнейм: a-z, 0-9, _ (3-32)");
-        action = Ui.button(this, "Войти");
-        toggle = Ui.textButton(this, "Нет аккаунта? Регистрация");
-        msg = Ui.text(this, "", 14);
-        msg.setGravity(android.view.Gravity.CENTER);
-        msg.setPadding(0, Ui.dp(this, 12), 0, 0);
-        TextView qr = Ui.text(this, "Уже вошли на телефоне? Войдите на другом устройстве: в списке чатов откройте меню ⋮ → «Войти на сайте (QR)».", 12);
-        qr.setTextColor(Ui.gray());
-        qr.setGravity(android.view.Gravity.CENTER);
-        qr.setPadding(0, Ui.dp(this, 24), 0, 0);
-        root.addView(Ui.field(email), Ui.spaced(this));
-        root.addView(Ui.field(password), Ui.spaced(this));
-        root.addView(Ui.field(username), Ui.spaced(this));
-        ((android.view.View) username.getParent().getParent()).setVisibility(android.view.View.GONE);
-        root.addView(action, Ui.spaced(this));
-        root.addView(toggle, Ui.match());
+        username = siteInput("");
+        root.addView(caption("Почта"));
+        root.addView(email, fieldLp());
+        root.addView(caption("Пароль"));
+        root.addView(password, fieldLp());
+        pwHint = Site.label(this, "Не меньше 10 символов", 13, Site.text2(this), false); pwHint.setVisibility(android.view.View.GONE);
+        root.addView(pwHint);
+        userBox = new LinearLayout(this); userBox.setOrientation(LinearLayout.VERTICAL); userBox.setVisibility(android.view.View.GONE);
+        userBox.addView(caption("Никнейм"));
+        userBox.addView(username, fieldLp());
+        userBox.addView(Site.label(this, "От 5 до 32 символов: латиница, цифры и _", 13, Site.text2(this), false));
+        root.addView(userBox);
+        action = new Button(this);
+        action.setText("Войти"); action.setAllCaps(false); action.setTextSize(16); action.setTextColor(0xFFFFFFFF);
+        action.setBackground(Site.round(Site.col(this, R.color.site_out), Ui.dp(this, 23)));
+        action.setStateListAnimator(null);
+        LinearLayout.LayoutParams al = new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)); al.topMargin = Ui.dp(this, 18);
+        root.addView(action, al);
+        toggle = new Button(this, null, 0);
+        toggle.setText("Нет аккаунта? Регистрация"); toggle.setAllCaps(false); toggle.setTextSize(15); toggle.setTextColor(Site.primary(this));
+        toggle.setBackground(null); toggle.setGravity(android.view.Gravity.START | android.view.Gravity.CENTER_VERTICAL); toggle.setPadding(0, 0, 0, 0);
+        root.addView(toggle, new LinearLayout.LayoutParams(-1, Ui.dp(this, 44)));
+        msg = Site.label(this, "", 14, Site.text2(this), false);
         root.addView(msg, Ui.match());
+        TextView qr = Site.label(this, "Уже вошли на телефоне? Войдите на другом устройстве: Настройки → «Войти на сайте (QR)».", 13, Site.text2(this), false);
+        qr.setPadding(0, Ui.dp(this, 16), 0, 0);
         root.addView(qr, Ui.match());
         android.widget.ScrollView sv = new android.widget.ScrollView(this);
         sv.setFillViewport(true);
-        sv.addView(root);
+        sv.setBackgroundColor(Site.page(this));
+        sv.addView(page);
         setContentView(sv);
-        Ui.fitSystemBars(this, sv); // edge-to-edge (Android 15+): не прятать контент под тулбаром/панелями
+        Ui.fitSystemBars(this, sv);
 
         toggle.setOnClickListener(v -> {
             register = !register;
-            ((android.view.View) username.getParent().getParent()).setVisibility(register ? android.view.View.VISIBLE : android.view.View.GONE);
+            userBox.setVisibility(register ? android.view.View.VISIBLE : android.view.View.GONE);
+            pwHint.setVisibility(register ? android.view.View.VISIBLE : android.view.View.GONE);
+            formTitle.setText(register ? "Регистрация" : "Почта и пароль");
             action.setText(register ? "Зарегистрироваться" : "Войти");
             toggle.setText(register ? "Уже есть аккаунт? Войти" : "Нет аккаунта? Регистрация");
         });
@@ -87,7 +115,7 @@ public class LoginActivity extends AppCompatActivity {
         final String u = username.getText().toString().trim().toLowerCase();
         if (e.isEmpty() || p.isEmpty()) { msg.setText("Введите почту и пароль"); return; }
         if (register && p.length() < 10) { msg.setText("Пароль должен быть не короче 10 символов"); return; }
-        if (register && !Pattern.matches("[a-z0-9_]{3,32}", u)) { msg.setText("Никнейм: латиница, цифры и _, от 3 до 32 символов"); return; }
+        if (register && !Pattern.matches("[a-z0-9_]{5,32}", u)) { msg.setText("Никнейм: от 5 до 32 символов: латиница, цифры и _"); return; }
         action.setEnabled(false);
         msg.setText("Подождите…");
         io.execute(() -> {
@@ -98,7 +126,7 @@ public class LoginActivity extends AppCompatActivity {
                     runOnUiThread(() -> {
                         msg.setText("Письмо отправлено. Подтвердите почту и затем войдите по паролю (так нужно для входа по QR).");
                         register = false;
-                        ((android.view.View) username.getParent().getParent()).setVisibility(android.view.View.GONE);
+                        userBox.setVisibility(android.view.View.GONE); pwHint.setVisibility(android.view.View.GONE); formTitle.setText("Почта и пароль");
                         action.setText("Войти");
                         toggle.setText("Нет аккаунта? Регистрация");
                         action.setEnabled(true);

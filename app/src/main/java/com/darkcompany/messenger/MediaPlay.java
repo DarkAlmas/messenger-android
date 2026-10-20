@@ -140,7 +140,7 @@ final class MediaPlay {
             }
             byte[] plain = E2eCore.decryptFile(ct, E2eCore.unb64(f.getString("k")), E2eCore.unb64(f.getString("iv")), f.optString("h", null));
             String m = f.optString("m", "");
-            String ext = m.contains("mp4") ? ".mp4" : m.contains("ogg") ? ".ogg" : m.contains("mpeg") ? ".mp3" : ".webm";
+            String ext = sniffExt(plain, m); // по сигнатуре, как сайт (66eeafa): webm/mkv/mp4
             File out = new File(ChatFiles.cacheDir(c), java.util.UUID.randomUUID() + ext);
             try (java.io.FileOutputStream fo = new java.io.FileOutputStream(out)) { fo.write(plain); }
             plainFiles.put(p, out);
@@ -194,5 +194,20 @@ final class MediaPlay {
         vv.setOnErrorListener((mp, w, e) -> { Ui.toast(a, "Не удалось воспроизвести видеосообщение"); return true; });
         d.setOnDismissListener(x -> vv.stopPlayback());
         d.show();
+    }
+
+    /** Тип медиа по сигнатуре файла; mime из шифротекста — только запасной вариант. */
+    static String sniffExt(byte[] b, String mime) {
+        if (b != null && b.length >= 12) {
+            if ((b[0] & 0xff) == 0x1A && (b[1] & 0xff) == 0x45 && (b[2] & 0xff) == 0xDF && (b[3] & 0xff) == 0xA3) {
+                String head = new String(b, 0, Math.min(b.length, 64), java.nio.charset.StandardCharsets.ISO_8859_1);
+                return head.contains("matroska") ? ".mkv" : ".webm";
+            }
+            if (b[4] == 'f' && b[5] == 't' && b[6] == 'y' && b[7] == 'p') return ".mp4";
+            if (b[0] == 'O' && b[1] == 'g' && b[2] == 'g' && b[3] == 'S') return ".ogg";
+            if ((b[0] == 'I' && b[1] == 'D' && b[2] == '3') || ((b[0] & 0xff) == 0xFF && (b[1] & 0xE0) == 0xE0)) return ".mp3";
+        }
+        String m = mime == null ? "" : mime;
+        return m.contains("mp4") ? ".mp4" : m.contains("ogg") ? ".ogg" : m.contains("mpeg") ? ".mp3" : ".webm";
     }
 }
