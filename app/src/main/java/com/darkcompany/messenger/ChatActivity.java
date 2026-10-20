@@ -219,6 +219,8 @@ public class ChatActivity extends AppCompatActivity {
         recBar.setPadding(Ui.dp(this, 14), 0, Ui.dp(this, 56), 0);
         android.view.View dot = new android.view.View(this); dot.setBackground(Site.round(getColor(R.color.site_danger), Ui.dp(this, 5)));
         recBar.addView(dot, new LinearLayout.LayoutParams(Ui.dp(this, 10), Ui.dp(this, 10)));
+        android.animation.ObjectAnimator blink = android.animation.ObjectAnimator.ofFloat(dot, "alpha", 1f, 0.15f);
+        blink.setDuration(600); blink.setRepeatMode(android.animation.ValueAnimator.REVERSE); blink.setRepeatCount(android.animation.ValueAnimator.INFINITE); recBlink = blink;
         recTime = Site.label(this, "0:00", 16, Site.text(this), false); recTime.setPadding(Ui.dp(this, 10), 0, Ui.dp(this, 10), 0);
         recBar.addView(recTime);
         recCancel = Site.label(this, "‹ Отмена", 16, Site.primary(this), false); recCancel.setGravity(Gravity.CENTER);
@@ -249,9 +251,9 @@ public class ChatActivity extends AppCompatActivity {
         });
         // Голосовые и кружки: удерживать — запись, влево — отмена, вверх — замок, короткое нажатие — голос/кружок
         recorder = new Recorder(this, mic, new Recorder.Hooks() {
-            @Override public void start(String mode) { recBar.setVisibility(android.view.View.VISIBLE); recTime.setText("0:00"); recCancel.setText("‹ Отмена"); recLock.setText("lock"); if ("round".equals(mode)) roundBox.setVisibility(android.view.View.VISIBLE); }
-            @Override public void tick(long sec, boolean locked) { recTime.setText(Cache.fmtDur(sec)); roundBox.setProgress(sec / (float) Recorder.MAX_REC); if (locked) { recCancel.setText("Отмена"); recLock.setText("send"); } }
-            @Override public void end() { recBar.setVisibility(android.view.View.GONE); roundBox.setVisibility(android.view.View.GONE); roundBox.setProgress(0); }
+            @Override public void start(String mode) { recBar.setVisibility(android.view.View.VISIBLE); recTime.setText("0:00"); recCancel.setText("‹ Влево — отмена"); recLock.setText("lock"); recBlink.start(); if ("round".equals(mode)) roundBox.setVisibility(android.view.View.VISIBLE); }
+            @Override public void tick(long sec, boolean locked) { recTime.setText(Cache.fmtDur(sec)); roundBox.setProgress(sec / (float) Recorder.MAX_REC); if (locked) { recCancel.setText("🔒 Отмена"); recLock.setText("send"); } }
+            @Override public void end() { recBlink.cancel(); recBar.setVisibility(android.view.View.GONE); roundBox.setVisibility(android.view.View.GONE); roundBox.setProgress(0); }
             @Override public androidx.camera.view.PreviewView preview() { return roundBox.preview; }
         }, (data, mime, name, media) -> sendMedia(data, name, mime, media));
         recCancel.setOnClickListener(v -> recorder.cancel());
@@ -353,7 +355,7 @@ public class ChatActivity extends AppCompatActivity {
     }
     private final Runnable typingEnd = () -> { if (System.currentTimeMillis() >= typingUntil) { typingUntil = 0; paintSub(); } };
     private TextView titleV, subV, netLine, recTime, recCancel, recLock;
-    private LinearLayout recBar;
+    private LinearLayout recBar; private android.animation.ObjectAnimator recBlink;
     private RoundBox roundBox;
 
     @Override protected void onStart() {

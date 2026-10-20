@@ -34,32 +34,72 @@ final class MediaPlay {
 
     /** .v-wave: столбики 3px, gap 2, r2, высота 3 + h·1.4 (h 0..15, до 64 шт.), по центру высоты 26.
      *  Непрослушанное входящее — accent .9; прослушанное — muted .55; проигранная часть (.on) — #4FC3F7. */
+    /** v13: 40 столбиков 2dp, шаг 4dp, высота 4–22dp по амплитуде (w из записи, иначе псевдо-волна по id);
+     *  проиграно — яркий цвет, остальное 40%; плавный прогресс; тап/перетаскивание — перемотка. */
     static final class Wave extends View {
-        private final int[] w; private float progress; boolean heard;
+        static final int N = 40;
+        private final float[] w = new float[N]; private float progress; boolean heard; final int on;
+        java.util.function.Consumer<Float> seek;
         private final android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
-        Wave(Context c, JSONArray arr, boolean heard) {
-            super(c); this.heard = heard;
-            int n = arr == null || arr.length() == 0 ? 40 : Math.min(64, arr.length()); w = new int[n];
-            for (int i = 0; i < n; i++) w[i] = arr == null || arr.length() == 0 ? 3 : Math.max(0, Math.min(15, arr.optInt(i, 0)));
+        Wave(Context c, JSONArray arr, boolean heard) { this(c, arr, heard, Site.READ, null); }
+        Wave(Context c, JSONArray arr, boolean heard, int on, String seed) {
+            super(c); this.heard = heard; this.on = on;
+            if (arr != null && arr.length() > 0) {
+                int n = arr.length(); float mx = 1;
+                for (int i = 0; i < n; i++) mx = Math.max(mx, arr.optInt(i, 0));
+                for (int i = 0; i < N; i++) { int j = Math.min(n - 1, i * n / N); w[i] = Math.max(0, arr.optInt(j, 0)) / mx; }
+            } else {
+                java.util.Random r = new java.util.Random(seed == null ? 7 : seed.hashCode());
+                for (int i = 0; i < N; i++) w[i] = 0.2f + 0.8f * r.nextFloat();
+            }
         }
-        void setProgress(float f) { progress = f; invalidate(); }
+        void setProgress(float f) { progress = Math.max(0, Math.min(1, f)); invalidate(); }
         void setHeard() { heard = true; invalidate(); }
         @Override protected void onMeasure(int ws, int hs) {
             float d = getResources().getDisplayMetrics().density;
-            int want = Math.round((w.length * 5 - 2) * d);
-            setMeasuredDimension(resolveSize(want, ws), Math.round(26 * d));
+            setMeasuredDimension(resolveSize(Math.round((N * 4 - 2) * d), ws), Math.round(24 * d));
+        }
+        @Override public boolean onTouchEvent(android.view.MotionEvent e) {
+            if (seek == null) return false;
+            int act = e.getActionMasked();
+            if (act == android.view.MotionEvent.ACTION_DOWN) getParent().requestDisallowInterceptTouchEvent(true);
+            if (act == android.view.MotionEvent.ACTION_DOWN || act == android.view.MotionEvent.ACTION_MOVE || act == android.view.MotionEvent.ACTION_UP) {
+                float f = Math.max(0, Math.min(1, e.getX() / Math.max(1, getWidth())));
+                setProgress(f);
+                if (act == android.view.MotionEvent.ACTION_UP) seek.accept(f);
+            }
+            return true;
         }
         @Override protected void onDraw(android.graphics.Canvas cv) {
             float d = getResources().getDisplayMetrics().density, hgt = getHeight();
-            int accent = Site.primary(getContext()), muted = Site.text2(getContext());
-            for (int i = 0; i < w.length; i++) {
-                float x = i * 5 * d; if (x + 3 * d > getWidth()) break;
-                boolean on = i / (float) w.length < progress;
-                if (on) p.setColor(Site.READ); else if (!heard) p.setColor((accent & 0x00FFFFFF) | 0xE6000000); else p.setColor((muted & 0x00FFFFFF) | 0x8C000000);
-                float bh = Math.round(3 + w[i] * 1.4f) * d, top = Math.round((hgt - bh) / 2);
-                cv.drawRoundRect(x, top, x + 3 * d, top + bh, 2 * d, 2 * d, p);
+            float step = Math.max(3 * d, getWidth() / (float) N), bw = Math.min(2 * d, step - d);
+            float pos = progress * N;
+            for (int i = 0; i < N; i++) {
+                float x = i * step;
+                float bh = (4 + 18 * w[i]) * d, top = (hgt - bh) / 2;
+                float frac = Math.max(0, Math.min(1, pos - i)); // плавный переход внутри столбика
+                p.setColor(on); p.setAlpha(Math.round(255 * (0.4f + 0.6f * frac)));
+                cv.drawRoundRect(x, top, x + bw, top + bh, bw / 2, bw / 2, p);
             }
         }
+    }
+
+    /** Кнопка 40dp, во время загрузки — вращающееся кольцо и ✕. */
+    static final class PlayBtn extends FrameLayout {
+        final TextView ic; final android.widget.ProgressBar ring;
+        PlayBtn(Context c, int bg, int fg) {
+            super(c);
+            android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
+            g.setShape(android.graphics.drawable.GradientDrawable.OVAL); g.setColor(bg); setBackground(g);
+            ic = Site.icon(c, "play_arrow", 26, fg); ic.setGravity(Gravity.CENTER);
+            addView(ic, new FrameLayout.LayoutParams(-1, -1));
+            ring = new android.widget.ProgressBar(c); ring.setIndeterminate(true);
+            ring.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(fg)); ring.setVisibility(GONE);
+            addView(ring, new FrameLayout.LayoutParams(-1, -1));
+            setContentDescription("Воспроизвести голосовое");
+        }
+        void loading(boolean on) { ring.setVisibility(on ? VISIBLE : GONE); ic.setText(on ? "close" : "play_arrow"); ic.setTextSize(on ? 18 : 26); }
+        void set(String s) { ring.setVisibility(GONE); ic.setTextSize(26); ic.setText(s); }
     }
 
     static boolean isHeard(Context c, String id) { return id != null && c.getSharedPreferences("heard", 0).getBoolean(id, false); }
@@ -85,32 +125,87 @@ final class MediaPlay {
         dur.setFontFeatureSettings("tnum");
         return dur;
     }
-    /** .voice: flex, gap 8, min-width 200, padding 2 0: ▶ · волна · длительность (34, справа). */
+    private static final float[] SPEEDS = {1f, 1.5f, 2f};
+    private static int speedIdx = 0;
+    /** v13 (Design Bot): 56dp, ширина 180–260dp по длительности; кнопка 40dp (своё — белая с синим значком, чужое — #4FC3F7 с белым);
+     *  волна 40×2dp; под ней 12sp серым длительность/остаток, плашка скорости 1x/1.5x/2x; синяя точка 6dp — не прослушано. */
     private static View voiceView(android.app.Activity a, boolean mine, JSONObject f, ExecutorService io, String id) {
+        double total = f.optDouble("d", 0);
+        int width = Ui.dp(a, 180 + (int) Math.round(80 * Math.min(1, total / 60.0)));
         LinearLayout row = new LinearLayout(a);
         row.setOrientation(LinearLayout.HORIZONTAL); row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(0, Ui.dp(a, 2), 0, Ui.dp(a, 2)); row.setMinimumWidth(Ui.dp(a, 200));
-        TextView play = playBtn(a, "Воспроизвести голосовое");
-        row.addView(play, new LinearLayout.LayoutParams(Ui.dp(a, 36), Ui.dp(a, 40)));
-        Wave wave = new Wave(a, f.optJSONArray("w"), mine || isHeard(a, id));
-        LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(-2, Ui.dp(a, 26)); wl.leftMargin = Ui.dp(a, 8);
-        row.addView(wave, wl);
-        TextView dur = durView(a, Cache.fmtDur(f.optDouble("d", 0)));
-        LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(Ui.dp(a, 34), -2); dl.leftMargin = Ui.dp(a, 8);
-        row.addView(dur, dl);
-        play.setOnClickListener(v -> {
-            if (playing == play && player != null) { if (player.isPlaying()) { player.pause(); play.setText("play_arrow"); } else { player.start(); play.setText("pause"); } return; }
-            play.setText("hourglass_empty");
+        row.setMinimumHeight(Ui.dp(a, 56));
+        int blue = Site.READ, bright = mine ? 0xFFFFFFFF : blue;
+        PlayBtn play = new PlayBtn(a, mine ? 0xFFFFFFFF : blue, mine ? blue : 0xFFFFFFFF);
+        row.addView(play, new LinearLayout.LayoutParams(Ui.dp(a, 40), Ui.dp(a, 40)));
+        LinearLayout colm = new LinearLayout(a); colm.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(width - Ui.dp(a, 50), -2); cl.leftMargin = Ui.dp(a, 10);
+        row.addView(colm, cl);
+        boolean heard = mine || isHeard(a, id);
+        Wave wave = new Wave(a, f.optJSONArray("w"), heard, bright, id);
+        colm.addView(wave, new LinearLayout.LayoutParams(-1, Ui.dp(a, 24)));
+        LinearLayout info = new LinearLayout(a); info.setGravity(Gravity.CENTER_VERTICAL);
+        TextView dur = Site.label(a, Cache.fmtDur(total), 12f, mine ? 0xB3FFFFFF : Site.text2(a), 400); dur.setFontFeatureSettings("tnum");
+        info.addView(dur);
+        View dot = new View(a); dot.setBackground(Site.round(blue, Ui.dp(a, 3)));
+        LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(Ui.dp(a, 6), Ui.dp(a, 6)); dl.leftMargin = Ui.dp(a, 6);
+        info.addView(dot, dl); dot.setVisibility(heard ? View.GONE : View.VISIBLE);
+        TextView sp = Site.label(a, label(SPEEDS[speedIdx]), 11f, mine ? 0xFFFFFFFF : Site.text2(a), 500);
+        sp.setBackground(Site.round(mine ? 0x33FFFFFF : 0x26FFFFFF, Ui.dp(a, 8))); sp.setPadding(Ui.dp(a, 6), Ui.dp(a, 1), Ui.dp(a, 6), Ui.dp(a, 1));
+        sp.setContentDescription("Скорость");
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-2, -2); sl.leftMargin = Ui.dp(a, 8);
+        info.addView(sp, sl);
+        LinearLayout.LayoutParams il = new LinearLayout.LayoutParams(-1, -2); il.topMargin = Ui.dp(a, 2);
+        colm.addView(info, il);
+        sp.setOnClickListener(v -> {
+            speedIdx = (speedIdx + 1) % SPEEDS.length; sp.setText(label(SPEEDS[speedIdx]));
+            if (player != null && playingWave == wave) applySpeed();
+        });
+        final File[] cached = {null};
+        final java.util.concurrent.atomic.AtomicBoolean cancel = new java.util.concurrent.atomic.AtomicBoolean();
+        Runnable start = () -> {
+            if (cached[0] != null) { startVoice(a, cached[0], play, wave, dur, total, mine, id, dot); return; }
+            if (play.ring.getVisibility() == View.VISIBLE) { cancel.set(true); play.set("play_arrow"); return; }
+            cancel.set(false); play.loading(true);
             io.execute(() -> {
                 try {
-                    File pf = plain(a, f);
-                    a.runOnUiThread(() -> { play.setText("play_arrow"); playVoice(a, pf, play, wave, dur, f.optDouble("d", 0)); if (!mine) { setHeard(a, id); wave.setHeard(); } });
-                } catch (Exception e) { a.runOnUiThread(() -> play.setText("play_arrow")); Ui.toast(a, Ui.err(e)); }
+                    File pf = plain(a, f); cached[0] = pf;
+                    a.runOnUiThread(() -> { if (cancel.get()) { play.set("play_arrow"); return; } play.set("play_arrow"); startVoice(a, pf, play, wave, dur, total, mine, id, dot); });
+                } catch (Exception e) { a.runOnUiThread(() -> play.set("play_arrow")); Ui.toast(a, Ui.err(e)); }
             });
+        };
+        play.setOnClickListener(v -> {
+            if (playingWave == wave && player != null) { if (player.isPlaying()) { player.pause(); play.set("play_arrow"); } else { player.start(); play.set("pause"); } return; }
+            start.run();
         });
-        row.setLayoutParams(new LinearLayout.LayoutParams(-2, -2));
+        wave.seek = fr -> {
+            if (playingWave == wave && player != null) { try { player.seekTo(Math.round(fr * player.getDuration())); } catch (Exception ignored) { } }
+            else { pendingSeek = fr; start.run(); }
+        };
+        row.setLayoutParams(new LinearLayout.LayoutParams(width, -2));
         return row;
     }
+    private static float pendingSeek = -1;
+    private static String label(float s) { return s == 1f ? "1x" : s == 2f ? "2x" : "1.5x"; }
+    private static void applySpeed() {
+        try { boolean was = player.isPlaying(); player.setPlaybackParams(player.getPlaybackParams().setSpeed(SPEEDS[speedIdx])); if (!was) player.pause(); } catch (Exception ignored) { }
+    }
+    private static PlayBtn playingBtn;
+    private static void startVoice(android.app.Activity c, File f, PlayBtn btn, Wave wave, TextView dur, double total, boolean mine, String id, View dot) {
+        stopVoice();
+        try {
+            player = new MediaPlayer();
+            player.setDataSource(f.getAbsolutePath());
+            player.setOnCompletionListener(mp -> stopVoice());
+            player.prepare();
+            if (pendingSeek > 0) player.seekTo(Math.round(pendingSeek * player.getDuration())); pendingSeek = -1;
+            player.start(); applySpeed();
+            playingBtn = btn; btn.set("pause"); playingWave = wave; playingDur = dur; playingTotal = total; remaining = true;
+            if (!mine) { setHeard(c, id); wave.setHeard(); dot.setVisibility(View.GONE); }
+            ph.post(prog);
+        } catch (Exception e) { stopVoice(); Ui.toast(c, "Не удалось воспроизвести: " + Ui.err(e)); }
+    }
+    private static boolean remaining;
 
     /** mp3/m4a вложением (.voice.afile): ▶ · имя 14px · длительность · ⤓ 32 (muted). */
     static View audioFile(android.app.Activity a, JSONObject f, ExecutorService io, View.OnClickListener download) {
@@ -258,14 +353,15 @@ final class MediaPlay {
         if (player == null) return;
         try { int pos = player.getCurrentPosition(), d = Math.max(1, player.getDuration());
             if (playingWave != null) playingWave.setProgress(pos / (float) d);
-            if (playingDur != null) playingDur.setText(Cache.fmtDur(pos / 1000.0));
+            if (playingDur != null) playingDur.setText(Cache.fmtDur((remaining ? Math.max(0, d - pos) : pos) / 1000.0));
         } catch (Exception ignored) { }
-        ph.postDelayed(this, 100);
+        ph.postDelayed(this, remaining ? 16 : 100);
     } };
     private static void stopVoice() {
         ph.removeCallbacks(prog);
         if (player != null) { try { player.release(); } catch (Exception ignored) { } player = null; }
         if (playing != null) playing.setText("play_arrow"); playing = null;
+        if (playingBtn != null) playingBtn.set("play_arrow"); playingBtn = null; remaining = false;
         if (playingWave != null) playingWave.setProgress(0); playingWave = null;
         if (playingDur != null) playingDur.setText(Cache.fmtDur(playingTotal)); playingDur = null;
     }
@@ -276,7 +372,7 @@ final class MediaPlay {
             player.setDataSource(f.getAbsolutePath());
             player.setOnCompletionListener(mp -> stopVoice());
             player.prepare(); player.start();
-            playing = btn; btn.setText("pause"); playingWave = wave; playingDur = dur; playingTotal = total;
+            playing = btn; btn.setText("pause"); remaining = false; playingWave = wave; playingDur = dur; playingTotal = total;
             ph.post(prog);
         } catch (Exception e) { stopVoice(); Ui.toast(c, "Не удалось воспроизвести: " + Ui.err(e)); }
     }
