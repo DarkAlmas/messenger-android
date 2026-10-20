@@ -109,8 +109,8 @@ public class NotifyService extends Service {
             String who = "";
             Avatars.refresh(c, java.util.Collections.singleton(m.getString("sender_id")), 600000);
             who = Avatars.displayName(Avatars.merged(c, m.getString("sender_id"))); if ("?".equals(who)) who = "";
-            if ("direct".equals(kind)) who = ""; // в личном чате имя уже в заголовке
-            Notify.message(c, id, title, kind, peer, who, text);
+            if ("direct".equals(kind) || who.isEmpty()) who = title;
+            Notify.message(c, id, title, kind, peer, m.getString("sender_id"), who, text, m.optString("created_at", null));
         }
     }
 }

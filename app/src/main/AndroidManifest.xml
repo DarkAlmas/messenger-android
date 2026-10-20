@@ -18,7 +18,7 @@
     <application
         android:allowBackup="false"
         android:icon="@android:drawable/sym_action_chat"
-        android:label="Мессенджер (натив)"
+        android:label="Мессенджер"
         android:usesCleartextTraffic="false"
         android:theme="@style/Theme.Messenger">
         <activity android:name=".LoginActivity" android:exported="true" android:theme="@style/Theme.Messenger.Site">
@@ -31,6 +31,7 @@
         <activity android:name=".ProfileActivity" android:exported="false" android:theme="@style/Theme.Messenger.Site" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".SettingsActivity" android:exported="false" android:theme="@style/Theme.Messenger.Site" />
         <service android:name=".NotifyService" android:exported="false" android:foregroundServiceType="remoteMessaging" />
+        <receiver android:name=".NotifyActions" android:exported="false" />
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

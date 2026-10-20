@@ -57,6 +57,7 @@ final class Avatars {
     /** Профиль с учётом локальных настроек, если это я. */
     static JSONObject merged(Context c, String uid) {
         JSONObject p = profiles.get(uid);
+        if (p == null && uid != null && !uid.isEmpty() && uid.equals(Api.get(c).uid())) p = cachedMe(c); // v10: свой профиль с прошлого запуска
         JSONObject o = new JSONObject();
         try {
             if (p != null) o = new JSONObject(p.toString());
@@ -67,6 +68,37 @@ final class Avatars {
             }
         } catch (Exception ignored) { }
         return o;
+    }
+
+    /** v10: свой профиль, сохранённый на диск (строка profiles по auth user id). */
+    static JSONObject cachedMe(Context c) {
+        try {
+            String uid = Api.get(c).uid(), j = prefs(c).getString("me_row", null);
+            if (j == null || uid.isEmpty()) return null;
+            JSONObject o = new JSONObject(j);
+            if (!uid.equals(o.optString("id"))) return null; // другой аккаунт
+            profiles.putIfAbsent(uid, o);
+            return o;
+        } catch (Exception e) { return null; }
+    }
+    /** v10: загрузить свой профиль с сервера (как loadMe() сайта: profiles?id=eq.auth.uid) и закэшировать. Фоновый поток. */
+    static boolean loadMe(Context c) {
+        String uid = Api.get(c).uid(); if (uid.isEmpty()) return false;
+        boolean ch = refresh(c, java.util.Collections.singleton(uid), 0);
+        JSONObject p = profiles.get(uid);
+        if (p != null) prefs(c).edit().putString("me_row", p.toString()).apply();
+        return ch;
+    }
+    /** v10: имя для своей шапки: display_name → username → префикс email → «?». */
+    static String myName(Context c) {
+        String n = displayName(merged(c, Api.get(c).uid()));
+        if (!"?".equals(n)) return n;
+        return emailPrefix(Api.get(c).email());
+    }
+    static String emailPrefix(String email) {
+        String e = email == null ? "" : email.trim(); int at = e.indexOf('@');
+        String pre = at > 0 ? e.substring(0, at) : e;
+        return pre.isEmpty() ? "?" : pre;
     }
 
     static int colorFor(JSONObject p, String seed) {
@@ -119,6 +151,22 @@ final class Avatars {
         g.setColor(col); // .ava: сплошной цвет (style.css), буква 600, размер 0.4 от аватара
         a.setBackground(g);
         return a;
+    }
+
+    /** v10: круглый аватар-битмап для уведомлений (Person icon): фото или буква на цвете профиля. */
+    static Bitmap bitmap(Context c, String uid, String name, int px) {
+        JSONObject p = uid == null ? new JSONObject() : merged(c, uid);
+        Bitmap photo = null; try { photo = photoFor(c, uid, p); } catch (Throwable ignored) { }
+        if (photo != null) return circle(photo, px);
+        Bitmap b = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas cv = new android.graphics.Canvas(b);
+        android.graphics.Paint pa = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        pa.setColor(colorFor(p, uid)); cv.drawCircle(px / 2f, px / 2f, px / 2f, pa);
+        pa.setColor(Color.WHITE); pa.setTextSize(px * 0.42f); pa.setTextAlign(android.graphics.Paint.Align.CENTER);
+        pa.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        android.graphics.Paint.FontMetrics fm = pa.getFontMetrics();
+        cv.drawText(letterFor(p, name), px / 2f, px / 2f - (fm.ascent + fm.descent) / 2f, pa);
+        return b;
     }
 
     static int lighten(int c) {

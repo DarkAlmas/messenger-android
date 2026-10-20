@@ -84,9 +84,8 @@ public class ChatsActivity extends AppCompatActivity {
         // .bar: аватар и имя (→ профиль), справа меню
         LinearLayout top = Site.bar(this);
         String myId = Api.get(this).uid();
-        JSONObject meP = Avatars.merged(this, myId);
-        String myName = meP.isNull("display_name") || meP.optString("display_name").isEmpty() ? meP.optString("username", "") : meP.optString("display_name");
-        LinearLayout meBtn = new LinearLayout(this); meBtn.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        String myName = Avatars.myName(this); // v10: свой профиль из кэша/сервера, затем префикс email, только потом «?»
+        LinearLayout meBtn = new LinearLayout(this); this.meBtn = meBtn; meBtn.setGravity(android.view.Gravity.CENTER_VERTICAL);
         meBtn.addView(Avatars.view(this, myId, myName, 42), new LinearLayout.LayoutParams(Ui.dp(this, 42), Ui.dp(this, 42)));
         meName = Site.label(this, myName, 15f, Site.text(this), 700); meName.setPadding(Ui.dp(this, 10), 0, 0, 0);
         meBtn.addView(meName);
@@ -94,6 +93,7 @@ public class ChatsActivity extends AppCompatActivity {
         meBtn.setPadding(Ui.dp(this, 6), Ui.dp(this, 4), Ui.dp(this, 6), Ui.dp(this, 4));
         top.addView(meBtn, new LinearLayout.LayoutParams(0, Ui.dp(this, 50), 1f));
         root.addView(top);
+        new Thread(() -> { Avatars.loadMe(this); runOnUiThread(this::refreshMe); }).start();
         // «Чаты ( ◌ Соединение… )»
         LinearLayout tr = new LinearLayout(this); tr.setGravity(android.view.Gravity.CENTER_VERTICAL);
         tr.setPadding(Ui.dp(this, 14), Ui.dp(this, 10), Ui.dp(this, 14), Ui.dp(this, 4));
@@ -174,6 +174,15 @@ public class ChatsActivity extends AppCompatActivity {
     static String titleFor(boolean online, boolean connected) {
         return !online ? "Чаты (Ожидание сети…)" : !connected ? "Чаты (Соединение…)" : "Чаты";
     }
+    private LinearLayout meBtn;
+    /** Перерисовать свой аватар и имя в шапке. */
+    void refreshMe() {
+        if (meBtn == null || isFinishing()) return;
+        String n = Avatars.myName(this);
+        meBtn.removeViewAt(0);
+        meBtn.addView(Avatars.view(this, Api.get(this).uid(), n, 42), 0, new LinearLayout.LayoutParams(Ui.dp(this, 42), Ui.dp(this, 42)));
+        if (meName != null) meName.setText(n);
+    }
     private LinearLayout connRow; private android.widget.TextView connTxt, meName;
     private void paintTitle() {
         if (connRow == null) return;
@@ -214,6 +223,7 @@ public class ChatsActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume(); visible = true;
         pendingAction();
+        refreshMe();
         Updater.resume(this);
         Updater.check(this, false);
         listH.removeCallbacks(listPoll); listH.post(listPoll); // новые чаты и сообщения появляются без перезахода
