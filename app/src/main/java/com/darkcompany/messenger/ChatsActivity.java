@@ -137,8 +137,23 @@ public class ChatsActivity extends AppCompatActivity {
         paintTitle();
         if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
             requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 7);
+        NotifyService.start(this);
+        askBattery();
         listH.post(listPoll);
     }
+
+    /** Один раз: просим не ограничивать работу в фоне, иначе система усыпит службу уведомлений. */
+    private void askBattery() {
+        android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+        if (pm == null || pm.isIgnoringBatteryOptimizations(getPackageName()) || !Notify.enabled(this) || Notify.sp(this).getBoolean("asked_battery", false)) return;
+        Notify.sp(this).edit().putBoolean("asked_battery", true).apply();
+        new com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle("Уведомления в фоне")
+                .setMessage("Чтобы сообщения приходили, когда приложение закрыто, разрешите ему работать в фоне без ограничений батареи.")
+                .setNegativeButton("Не сейчас", null)
+                .setPositiveButton("Разрешить", (d, w) -> { try { startActivity(new android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:" + getPackageName()))); } catch (Exception e) { Ui.toast(this, "Откройте настройки батареи вручную"); } })
+                .show();
+    }
+    @Override public void onRequestPermissionsResult(int rc, String[] p, int[] r) { super.onRequestPermissionsResult(rc, p, r); if (rc == 7) NotifyService.start(this); }
 
     // ---- «Чаты (Соединение…)» / «Чаты (Ожидание сети…)» ----
     private volatile boolean online = true, connected = false;
@@ -252,6 +267,7 @@ public class ChatsActivity extends AppCompatActivity {
     static void logout(android.app.Activity a) {
         E2e.get(a).wipe();
         Cache.wipe(a);
+        NotifyService.stop(a); Notify.cancelAll(a); a.getSharedPreferences("notif_seen", 0).edit().clear().apply();
         Api.get(a).logout();
         new Thread(() -> {
             java.io.File[] fs = new java.io.File(a.getCacheDir(), "chat-files").listFiles();
@@ -490,8 +506,7 @@ public class ChatsActivity extends AppCompatActivity {
             if (prev != null || o.optInt("unread", 0) > 0) {
                 try { Api.get(this).rpc("mark_delivered", new JSONObject().put("p_chat", id).put("p_upto", at)); } catch (Exception ignored) { }
             }
-            if (!firstLoad && prev != null && !id.equals(ChatActivity.openChat))
-                Notify.message(this, id, chatTitle(o), o.optString("kind", ""), o.isNull("peer_id") ? null : o.optString("peer_id"), null);
+            // уведомления показывает NotifyService (и в фоне, и при открытом списке) — здесь не дублируем
         }
         firstLoad = false;
     }

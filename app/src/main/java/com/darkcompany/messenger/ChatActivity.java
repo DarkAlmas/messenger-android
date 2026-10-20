@@ -130,7 +130,7 @@ public class ChatActivity extends AppCompatActivity {
         checkE2e();
         scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        box = Ui.column(this);
+        box = Ui.column(this); box.setClipChildren(false); box.setClipToPadding(false);
         scroll.addView(box);
         scroll.setBackgroundColor(getColor(R.color.site_chatbg));
         android.widget.FrameLayout msgFrame = new android.widget.FrameLayout(this);
@@ -536,71 +536,67 @@ public class ChatActivity extends AppCompatActivity {
             final boolean mine = me.equals(m.optString("sender_id"));
             final JSONObject job = m.optJSONObject("_job");
             long at = Ui.instant(m.optString("created_at"));
-            if (Site.dayKey(at) != lastDay) { lastDay = Site.dayKey(at); box.addView(Site.dateSep(this, Site.dayLabel(at, now))); }
+            // Ui.instant — микросекунды; dayKey/dayLabel ждут миллисекунды (раньше даты в ленте были «58769 г.»)
+            if (Site.dayKey(at / 1000) != lastDay) { lastDay = Site.dayKey(at / 1000); box.addView(Site.dateSep(this, Site.dayLabel(at / 1000, now))); }
             JSONObject next = i + 1 < all.size() ? all.get(i + 1) : null;
-            boolean tail = next == null || !m.optString("sender_id").equals(next.optString("sender_id")) || Site.dayKey(Ui.instant(next.optString("created_at"))) != lastDay;
+            boolean tail = next == null || !m.optString("sender_id").equals(next.optString("sender_id")) || Site.dayKey(Ui.instant(next.optString("created_at")) / 1000) != lastDay;
             String who = mine || !isGroup() ? null : (m.isNull("sender_id") ? "удалённый аккаунт" : names.getOrDefault(m.optString("sender_id"), "участник"));
-            LinearLayout extra = new LinearLayout(this);
-            extra.setOrientation(LinearLayout.VERTICAL);
+            // --- .msg: буквальный перенос renderMsg() сайта ---
+            final JSONObject pl = m.isNull("ciphertext") ? null : dec.get(id);
+            final boolean ok = pl != null && !pl.has("err");
+            final boolean otherDev = pl != null && "other".equals(pl.optString("err"));
+            final JSONObject f = ok ? pl.optJSONObject("f") : null;
+            MsgView.Bubble bubble = new MsgView.Bubble(this, mine, tail);
+            if (who != null) bubble.addView(MsgView.sender(this, who));
             if (!m.isNull("reply_to") && m.has("reply_to")) {
                 JSONObject q = byId.get(m.optString("reply_to"));
-                TextView qt = Site.label(this, q == null ? "сообщение" : quoteOf(q, me), 14, mine ? 0xFFFFFFFF : Site.text(this), false);
-                qt.setMaxLines(2); qt.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                android.graphics.drawable.GradientDrawable qb = Site.round(mine ? 0x26FFFFFF : 0x0F3D5AFE, Ui.dp(this, 6));
-                qt.setBackground(new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{qb}));
-                qt.setPadding(Ui.dp(this, 8), Ui.dp(this, 3), Ui.dp(this, 8), Ui.dp(this, 3));
-                LinearLayout qrow = new LinearLayout(this);
-                android.view.View line = new android.view.View(this); line.setBackgroundColor(mine ? 0xFFFFFFFF : Site.primary(this));
-                qrow.addView(line, new LinearLayout.LayoutParams(Ui.dp(this, 2), -1));
-                qrow.addView(qt);
-                LinearLayout.LayoutParams ql = new LinearLayout.LayoutParams(-2, -2); ql.topMargin = Ui.dp(this, 2); ql.bottomMargin = Ui.dp(this, 4);
-                extra.addView(qrow, ql);
+                String qn = q == null ? "Ответ" : me.equals(q.optString("sender_id")) ? "Вы" : q.isNull("sender_id") ? "…" : peerName(q.optString("sender_id"));
+                android.view.View rq = MsgView.reply(this, mine, qn, q == null ? "сообщение" : quoteBody(q));
+                final String rto = m.optString("reply_to"); rq.setOnClickListener(v -> jumpTo(rto));
+                bubble.addView(rq);
             }
-            final JSONObject pl = m.isNull("ciphertext") ? null : dec.get(id);
-            boolean media = false;
-            if (pl != null && pl.optJSONObject("f") != null && ("voice".equals(pl.optJSONObject("f").optString("vk")) || "round".equals(pl.optJSONObject("f").optString("vk")))) {
-                extra.addView(MediaPlay.view(this, mine, pl.optJSONObject("f"), io)); media = true;
-            } else if (pl != null && pl.optJSONObject("f") != null && isImage(pl.optJSONObject("f"))) {
-                final JSONObject f = pl.optJSONObject("f");
-                extra.addView(imagePreview(f, !mine));
-            } else if (pl != null && pl.optJSONObject("f") != null) {
-                final JSONObject f = pl.optJSONObject("f");
-                extra.addView(Ui.attachment(this, mine, f.optString("n", "file"), f.optLong("s", 0), v -> openE2eFile(f, !mine)));
+            boolean media = false, round = false, imgOnly = false;
+            android.view.View mediaV = null;
+            if (f != null && ("voice".equals(f.optString("vk")) || "round".equals(f.optString("vk")))) {
+                mediaV = MediaPlay.view(this, mine, f, io, id); media = true; round = "round".equals(f.optString("vk"));
+            } else if (f != null && avKind(f) == 1) {
+                mediaV = MediaPlay.audioFile(this, f, io, v -> openE2eFile(f, !mine)); media = true;
+                TextView an = mediaV.findViewWithTag("af-name"); if (an != null) an.setTextColor(getColor(mine ? R.color.web_bubble_out_text : R.color.web_bubble_in_text));
+            } else if (f != null && avKind(f) == 2) {
+                mediaV = MediaPlay.videoFile(this, f, io, v -> openE2eFile(f, !mine)); media = true;
+            } else if (f != null && isImage(f)) {
+                mediaV = imagePreview(f, !mine); imgOnly = pl.optString("t", "").isEmpty();
+                ((LinearLayout.LayoutParams) mediaV.getLayoutParams()).topMargin = 0;
+                ((LinearLayout.LayoutParams) mediaV.getLayoutParams()).bottomMargin = imgOnly ? 0 : MsgView.dp(this, 8);
+            } else if (f != null) {
+                mediaV = MsgView.fileRow(this, mine, f.optString("n", "file"), f.optLong("s", 0) > 0 ? MsgView.size(f.optLong("s", 0)) : "", false, v -> openE2eFile(f, !mine));
             } else if (!m.isNull("attachment_path") && m.has("attachment_path") && m.isNull("ciphertext")) {
                 final String ap = m.optString("attachment_path");
                 final String an = m.isNull("attachment_name") ? "file" : m.optString("attachment_name");
-                extra.addView(Ui.attachment(this, mine, an, m.optLong("attachment_size", 0), v -> openFile(ap, an, !mine)));
+                mediaV = MsgView.fileRow(this, mine, an, m.optLong("attachment_size", 0) > 0 ? MsgView.size(m.optLong("attachment_size", 0)) : "", false, v -> openFile(ap, an, !mine));
             }
-            String bd = media ? "" : textOf(m);
+            String bd = textOf(m);
+            int bodyKind = otherDev ? 2 : (!m.isNull("ciphertext") && !ok) ? 1 : 0;
+            if (f != null && bd.equals("(пустое сообщение)")) bd = "";
             boolean edited = !m.isNull("edited_at") && m.has("edited_at") || (pl != null && pl.optInt("ed", 0) == 1);
             int tick = 0;
             if (job != null) tick = job.optBoolean("failed") ? 5 : 4;
-            else if (mine) tick = tickState(at, othersDlv, othersRead);
-            else if (lastIncoming == null || at > Ui.instant(lastIncoming)) lastIncoming = m.optString("created_at");
-            String pre = m.isNull("ciphertext") ? PLAIN_MARK : null;
-            if (edited) pre = pre == null ? "изменено" : pre + " · изменено";
-            LinearLayout meta = Site.meta(this, mine, !m.isNull("ciphertext"), pre, Ui.time(m.optString("created_at", "")), tick);
+            else if (mine && !otherDev) tick = tickState(at, othersDlv, othersRead);
+            if (!mine && (lastIncoming == null || at > Ui.instant(lastIncoming))) lastIncoming = m.optString("created_at");
+            String lock = job != null ? null : m.isNull("ciphertext") ? PLAIN_MARK : "🔒";
+            LinearLayout foot = MsgView.foot(this, mine, imgOnly, lock, pins.contains(id), edited, Ui.time(m.optString("created_at", "")), tick);
             Map<String, int[]> em = rmap.get(id);
-            if (em != null && !em.isEmpty()) {
-                // .reacts: пилюли .react 22px, 13px, padding 0 7, r999; своя — с рамкой
-                LinearLayout rr = new LinearLayout(this); rr.setGravity(Gravity.CENTER_VERTICAL);
-                for (Map.Entry<String, int[]> e : em.entrySet()) {
-                    final String emo = e.getKey();
-                    TextView rv = Site.label(this, emo + (e.getValue()[0] > 1 ? " " + e.getValue()[0] : ""), 13f, mine ? 0xFFFFFFFF : Site.text(this), 400);
-                    rv.setGravity(Gravity.CENTER); rv.setPadding(Ui.dp(this, 7), 0, Ui.dp(this, 7), 0);
-                    boolean my = e.getValue()[1] == 1;
-                    int pc = Site.primary(this);
-                    android.graphics.drawable.GradientDrawable rb = Site.round(mine ? 0x2EFFFFFF : (pc & 0x00FFFFFF) | (my ? 0x38000000 : 0x1F000000), Ui.dp(this, 11));
-                    if (my) rb.setStroke(Math.max(1, Ui.dp(this, 1)), mine ? 0x80FFFFFF : (pc & 0x00FFFFFF) | 0x8C000000);
-                    rv.setBackground(rb);
-                    rv.setOnClickListener(v -> toggleReact(id, emo, em));
-                    LinearLayout.LayoutParams rl2 = new LinearLayout.LayoutParams(-2, Ui.dp(this, 22)); rl2.rightMargin = Ui.dp(this, 4);
-                    rr.addView(rv, rl2);
-                }
-                LinearLayout.LayoutParams rrl = new LinearLayout.LayoutParams(-2, -2); rrl.rightMargin = Ui.dp(this, 4);
-                meta.addView(rr, 0, rrl);
+            if (em != null && !em.isEmpty()) MsgView.reacts(this, foot, mine, em, e -> toggleReact(id, e, em));
+            if (round) { bubble.setPlain(); bubble.addView(mediaV); }
+            else if (imgOnly) { bubble.setPadding(MsgView.dp(this, 4), MsgView.dp(this, 4), MsgView.dp(this, 4), MsgView.dp(this, 4)); bubble.addView(MsgView.overlayFoot(this, mediaV, foot)); }
+            else if (mediaV != null && !media && f == null) { /* старый файл без шифрования: ниже текста */ }
+            else if (mediaV != null) bubble.addView(mediaV);
+            if (!imgOnly && !bd.isEmpty() && !(media && pl != null && pl.optString("t", "").isEmpty())) bubble.addView(MsgView.body(this, mine, bd, bodyKind), new LinearLayout.LayoutParams(-2, -2));
+            if (mediaV != null && f == null) bubble.addView(mediaV);
+            if (!imgOnly) {
+                LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(round ? MsgView.dp(this, 200) : -2, -2); fl.topMargin = MsgView.dp(this, 2); fl.gravity = Gravity.END;
+                bubble.addView(foot, fl);
             }
-            LinearLayout bubble = Site.bubble(this, mine, who, bd, extra.getChildCount() > 0 ? extra : null, meta, tail);
             if (job != null) {
                 if (job.optBoolean("failed")) bubble.setOnClickListener(v -> failedMenu(id));
                 bubble.setOnLongClickListener(v -> { failedMenu(id); return true; });
@@ -819,6 +815,16 @@ public class ChatActivity extends AppCompatActivity {
                 .setNeutralButton("🔒 Код безопасности", (d, w) -> { if (e2e) showSafety(); else toast("Шифрование ещё не готово"); }).show();
     }
 
+    /** previewOf() сайта: текст, «📎 имя» или подпись голосового/кружка. */
+    private String quoteBody(JSONObject q) {
+        JSONObject pl = q.isNull("ciphertext") ? null : dec.get(q.optString("id"));
+        if (q.isNull("ciphertext")) return q.isNull("body") || q.optString("body").isEmpty() ? "Сообщение" : q.optString("body");
+        if (pl == null || pl.has("err")) return "🔒 Зашифрованное сообщение";
+        JSONObject f = pl.optJSONObject("f");
+        if (f != null && ("voice".equals(f.optString("vk")) || "round".equals(f.optString("vk")))) return Cache.previewOf(pl);
+        String t = pl.optString("t", "");
+        return !t.isEmpty() ? t : f != null ? "📎 " + f.optString("n", "файл") : "Сообщение";
+    }
     private String quoteOf(JSONObject q, String me) {
         String who = me.equals(q.optString("sender_id")) ? "Вы" : names.getOrDefault(q.optString("sender_id"), "");
         String b = textOf(q);
@@ -866,6 +872,21 @@ public class ChatActivity extends AppCompatActivity {
         return !t.isEmpty() ? t : f != null ? (isImage(f) ? "Фото" : "Файл") : "Сообщение";
     }
     /** imgMime сайта: по mime или расширению (SVG не показываем). */
+    /** avKind() сайта: 1 — аудио (mp3/m4a/aac/ogg/wav), 2 — видео (mp4/webm), 0 — иначе. */
+    static int avKind(JSONObject f) {
+        String m = f.optString("m", "").split(";")[0].trim().toLowerCase(java.util.Locale.ROOT), n = f.optString("n", "").toLowerCase(java.util.Locale.ROOT);
+        String ext = n.contains(".") ? n.substring(n.lastIndexOf('.') + 1) : ""; boolean gen = m.isEmpty() || m.equals("application/octet-stream");
+        if (m.matches("audio/(mpeg|mp3|mp4|x-m4a|m4a|aac|ogg|wav|x-wav|webm)")) return 1;
+        if (gen && ext.matches("mp3|m4a|aac|ogg|oga|opus|wav|weba")) return 1;
+        if (m.matches("video/(mp4|webm|x-m4v)")) return 2;
+        if (gen && ext.matches("mp4|m4v|webm")) return 2;
+        return 0;
+    }
+    private String peerName(String uid) {
+        JSONObject p = Avatars.profiles.get(uid);
+        if (p != null) { String dn = p.isNull("display_name") ? "" : p.optString("display_name", "").trim(); return dn.isEmpty() ? p.optString("username", "…") : dn; }
+        String n = names.get(uid); if (n == null) return "…"; int i = n.indexOf(" @"); return i > 0 ? n.substring(0, i) : n.startsWith("@") ? n.substring(1) : n;
+    }
     static boolean isImage(JSONObject f) {
         String m = f.optString("m", "").toLowerCase(java.util.Locale.ROOT);
         if (m.equals("image/jpeg") || m.equals("image/png") || m.equals("image/gif") || m.equals("image/webp")) return true;
@@ -874,16 +895,17 @@ public class ChatActivity extends AppCompatActivity {
     }
     private final Map<String, android.graphics.Bitmap> thumbs = new java.util.concurrent.ConcurrentHashMap<>();
     /** .img-prev: до 260×320, r12; пока грузится — 220×160 на surface-highest со спиннером. Нажатие — открыть файл. */
+    /** .img-prev: до 260×320, r12; пока грузится — блок по iw/ih (surface-highest + спиннер); без сети — серый блок с иконкой image. */
     private android.view.View imagePreview(JSONObject f, boolean incoming) {
         android.widget.FrameLayout fr = new android.widget.FrameLayout(this);
         final String key = f.optString("p");
-        android.widget.ImageView iv = new android.widget.ImageView(this);
-        iv.setAdjustViewBounds(true); iv.setMaxWidth(Ui.dp(this, 260)); iv.setMaxHeight(Ui.dp(this, 320));
-        iv.setClipToOutline(true); iv.setBackground(Site.round(getColor(R.color.web_color_surface_highest), Ui.dp(this, 12)));
+        int[] wh = MsgView.imgBox(this, f);
         android.graphics.Bitmap have = thumbs.get(key);
-        if (have != null) { iv.setImageBitmap(have); fr.addView(iv, new android.widget.FrameLayout.LayoutParams(-2, -2)); }
+        if (have != null) showThumb(fr, have);
+        else if (offlineImgs.contains(key) && !online) { fr.addView(MsgView.offlineImage(this, wh[0], wh[1])); }
         else {
-            fr.addView(iv, new android.widget.FrameLayout.LayoutParams(Ui.dp(this, 220), Ui.dp(this, 160)));
+            fr.setBackground(Site.round(getColor(R.color.web_color_surface_highest), MsgView.dp(this, 12)));
+            fr.setMinimumWidth(wh[0]); fr.setMinimumHeight(wh[1]);
             android.view.View sp = Site.spinner(this);
             fr.addView(sp, new android.widget.FrameLayout.LayoutParams(Ui.dp(this, 28), Ui.dp(this, 28), Gravity.CENTER));
             io.execute(() -> {
@@ -894,19 +916,35 @@ public class ChatActivity extends AppCompatActivity {
                     int ss = 1; while (o.outWidth / ss > 1040 || o.outHeight / ss > 1280) ss *= 2;
                     o = new android.graphics.BitmapFactory.Options(); o.inSampleSize = ss;
                     android.graphics.Bitmap bm = android.graphics.BitmapFactory.decodeFile(pf.getAbsolutePath(), o);
-                    if (bm == null) return;
-                    thumbs.put(key, bm);
-                    runOnUiThread(() -> { fr.removeView(sp); iv.setImageBitmap(bm); iv.setLayoutParams(new android.widget.FrameLayout.LayoutParams(-2, -2)); });
-                } catch (Exception e) { runOnUiThread(() -> fr.removeView(sp)); }
+                    if (bm == null) { runOnUiThread(() -> { fr.removeAllViews(); fr.addView(MsgView.fileRow(this, !incoming, f.optString("n", "file"), MsgView.size(f.optLong("s", 0)), false, v -> openE2eFile(f, incoming))); }); return; }
+                    thumbs.put(key, bm); offlineImgs.remove(key);
+                    runOnUiThread(() -> { fr.removeAllViews(); fr.setBackground(null); fr.setMinimumWidth(0); fr.setMinimumHeight(0); showThumb(fr, bm); });
+                } catch (Exception e) {
+                    boolean net = !online || e instanceof java.io.IOException;
+                    if (net) offlineImgs.add(key);
+                    runOnUiThread(() -> { fr.removeAllViews(); fr.setBackground(null);
+                        if (net) fr.addView(MsgView.offlineImage(this, wh[0], wh[1]));
+                        else { TextView t = Site.label(this, "Не удалось загрузить картинку", 13f, Site.text2(this), 400); t.setGravity(Gravity.CENTER);
+                            fr.setBackground(Site.round(getColor(R.color.web_color_surface_highest), MsgView.dp(this, 12))); fr.addView(t, new android.widget.FrameLayout.LayoutParams(-1, -1)); } });
+                }
             });
         }
         fr.setOnClickListener(v -> openE2eFile(f, incoming));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2); lp.topMargin = Ui.dp(this, 4); lp.bottomMargin = Ui.dp(this, 4);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
         fr.setLayoutParams(lp);
         return fr;
     }
-
-    /** Удаление у всех (автор, RLS messages delete own) и удаление вложения по attachment_path — как deleteMsg на сайте. */
+    private final Set<String> offlineImgs = java.util.Collections.synchronizedSet(new HashSet<>());
+    private void showThumb(android.widget.FrameLayout fr, android.graphics.Bitmap bm) {
+        // CSS: max-width 260 / max-height 320 в css-px; натуральный размер картинки = её пиксели в css-px
+        float s = Math.min(1f, Math.min(260f / bm.getWidth(), 320f / bm.getHeight())) * getResources().getDisplayMetrics().density;
+        android.widget.ImageView iv = new android.widget.ImageView(this);
+        iv.setScaleType(android.widget.ImageView.ScaleType.FIT_XY);
+        androidx.core.graphics.drawable.RoundedBitmapDrawable rd = androidx.core.graphics.drawable.RoundedBitmapDrawableFactory.create(getResources(), bm);
+        rd.setCornerRadius(MsgView.dpf(this, 12)); rd.setAntiAlias(true); // r12
+        iv.setImageDrawable(rd);
+        fr.addView(iv, new android.widget.FrameLayout.LayoutParams(Math.round(bm.getWidth() * s), Math.round(bm.getHeight() * s)));
+    }
     private void confirmDelete(JSONObject m) {
         final String id = m.optString("id");
         JSONObject pl = dec.get(id); JSONObject f = pl == null ? null : pl.optJSONObject("f");
@@ -979,10 +1017,8 @@ public class ChatActivity extends AppCompatActivity {
             return b;
         }
         JSONObject pl = dec.get(m.optString("id"));
-        if (pl == null) return isGroup() ? "🔒 Ожидание ключа отправителя…" : "🔒 …";
-        if (pl.has("err")) return "other".equals(pl.optString("err")) ? "🔒 Зашифровано для другого устройства"
-                : "🔒 Не удалось расшифровать" + (pl.has("why") ? " (" + pl.optString("why") + ")" : "")
-                + (failCount.getOrDefault(m.optString("id"), 0) < MAX_DECRYPT_TRIES ? " — повторю попытку" : "");
+        if (pl == null) return "Расшифровка…"; // как на сайте: курсив, 🔒 — в строке времени
+        if (pl.has("err")) return "other".equals(pl.optString("err")) ? "Отправлено до входа на этом устройстве" : "Не удалось расшифровать";
         String t = pl.optString("t", "");
         if (t.isEmpty() && pl.optJSONObject("f") == null) return "(пустое сообщение)";
         return t;
@@ -1345,7 +1381,7 @@ public class ChatActivity extends AppCompatActivity {
 
     /** Прочитано — только если чат реально на экране (в фокусе) и только до последнего показанного сообщения собеседника. */
     private void markRead() {
-        final String upto = seenUpto;
+        final String upto = seenUpto; if (chatId != null) Notify.cancel(this, chatId);
         if (upto == null || !running || !hasWindowFocus()) return;
         if (markedUpto != null && Ui.instant(markedUpto) >= Ui.instant(upto)) return; // без повторов (иначе цикл через Realtime)
         markedUpto = upto;

@@ -181,11 +181,12 @@ final class Site {
     /** .date-sep: 13px/500, фон surface-container, r999, padding 3 12, тень 0 1px 2px; отступы 10 сверху и снизу. */
     static View dateSep(Context c, String label) {
         TextView t = label(c, label, 13f, text2(c), 500);
-        t.setBackground(round(container(c), Ui.dp(c, 999)));
+        // .date-sep: color-mix(surface-container 85%, transparent), r999, padding 3 12, margin 10 0 6
+        t.setBackground(round((container(c) & 0x00FFFFFF) | 0xD9000000, Ui.dp(c, 999)));
         t.setPadding(Ui.dp(c, 12), Ui.dp(c, 3), Ui.dp(c, 12), Ui.dp(c, 3));
-        t.setElevation(Ui.dp(c, 1));
+        t.setMinHeight(Math.round(23.55f * c.getResources().getDisplayMetrics().density));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-        lp.gravity = Gravity.CENTER_HORIZONTAL; lp.topMargin = Ui.dp(c, 10); lp.bottomMargin = Ui.dp(c, 4);
+        lp.gravity = Gravity.CENTER_HORIZONTAL; lp.topMargin = Ui.dp(c, 10); lp.bottomMargin = Ui.dp(c, 6);
         t.setLayoutParams(lp);
         return t;
     }

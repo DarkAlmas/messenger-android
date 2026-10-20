@@ -37,7 +37,7 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     @Override protected void onResume() {
-        super.onResume();
+        super.onResume(); if (rowSound != null) Site.setValue(rowSound, Notify.soundLabel(this));
         io.execute(() -> {
             boolean ch = Avatars.refresh(this, Collections.singleton(Api.get(this).uid()), 0);
             if (ch) runOnUiThread(this::build);
@@ -46,7 +46,7 @@ public class SettingsActivity extends AppCompatActivity {
         paintStorage();
     }
 
-    private View rowNotif;
+    private View rowNotif, rowSound;
     private void build() {
         body.removeAllViews();
         String uid = Api.get(this).uid();
@@ -80,26 +80,34 @@ public class SettingsActivity extends AppCompatActivity {
         g.addView(themeBox);
         paintThemeBox();
 
-        g = Site.group(this, body, "Уведомления");
-        LinearLayout nr = Site.row(this, g, "notifications", "Уведомления", notifSub(Notify.enabled(this)), null, null);
-        rowNotif = nr;
-        { // как на сайте: строка-переключатель 57 + отступ 10 снизу группы
-            android.view.ViewGroup.LayoutParams lp0 = nr.getLayoutParams();
-            if (lp0 instanceof android.view.ViewGroup.MarginLayoutParams) ((android.view.ViewGroup.MarginLayoutParams) lp0).bottomMargin = Ui.dp(this, 10);
-            nr.setMinimumHeight(Ui.dp(this, 57));
+        // «Уведомления»: три строки, как на скриншоте Димы — переключатель, «Звук» (системный выбор мелодии канала), «Показывать текст»
+        { // заголовок раздела — над карточкой (скриншот Димы): 14px/500 primary, отступ слева 24
+            android.widget.TextView nt = Site.lh(Site.label(this, "Уведомления", 14f, Site.primary(this), 500), 18.9f);
+            nt.setPadding(Ui.dp(this, 24), Ui.dp(this, 4), Ui.dp(this, 16), Ui.dp(this, 8));
+            body.addView(nt, new LinearLayout.LayoutParams(-1, -2));
         }
-        android.widget.CompoundButton sw = Site.toggle(this, Notify.enabled(this));
+        g = Site.group(this, body, null);
+        LinearLayout nr = Site.row(this, g, "notifications", "Уведомления", null, null, null);
+        rowNotif = nr;
+        android.widget.CompoundButton sw = Site.toggle(this, Notify.enabled(this) && Notify.allowed(this));
         sw.setOnCheckedChangeListener((bt, on) -> {
             Notify.setEnabled(this, on);
-            if (on && android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
-                requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 7);
-            Site.setSub(rowNotif, notifSub(on));
+            if (on && !Notify.allowed(this)) requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 7);
             bt.invalidate();
             Ui.toast(this, on ? "Уведомления включены" : "Уведомления выключены");
         });
         LinearLayout.LayoutParams swl = new LinearLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 32)); swl.leftMargin = Ui.dp(this, 16);
         nr.addView(sw, swl);
         nr.setOnClickListener(v -> sw.toggle());
+        rowSound = Site.row(this, g, "volume_up", "Звук", null, Notify.soundLabel(this), v -> {
+            try { startActivity(Notify.soundSettings(this)); } catch (Exception e) { Ui.toast(this, "Не удалось открыть настройки звука"); } });
+        LinearLayout tr = Site.row(this, g, "visibility_off", "Показывать текст", null, null, null);
+        android.widget.CompoundButton tsw = Site.toggle(this, Notify.showText(this));
+        tsw.setOnCheckedChangeListener((bt, on) -> { Notify.setShowText(this, on); bt.invalidate(); });
+        LinearLayout.LayoutParams tsl = new LinearLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 32)); tsl.leftMargin = Ui.dp(this, 16);
+        tr.addView(tsw, tsl);
+        tr.setOnClickListener(v -> tsw.toggle());
+        tr.setContentDescription("Показывать текст сообщений в уведомлениях");
 
         g = Site.group(this, body, "Данные");
         String mail = Api.get(this).email();

@@ -359,8 +359,7 @@ final class Ui {
             SimpleDateFormat in = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US);
             in.setTimeZone(TimeZone.getTimeZone("UTC"));
             Date d = in.parse(iso.substring(0, 19));
-            boolean today = new SimpleDateFormat("yyyyMMdd", Locale.US).format(d).equals(new SimpleDateFormat("yyyyMMdd", Locale.US).format(new Date()));
-            return new SimpleDateFormat(today ? "HH:mm" : "dd.MM HH:mm", Locale.getDefault()).format(d);
+            return new SimpleDateFormat("HH:mm", Locale.getDefault()).format(d); // fmtTime сайта: только время, день — в .date-sep
         } catch (Exception e) { return ""; }
     }
 

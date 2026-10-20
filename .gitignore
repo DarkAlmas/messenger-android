@@ -7,3 +7,4 @@ local.properties
 *.apk
 .idea/
 *.hprof
+env.sh
