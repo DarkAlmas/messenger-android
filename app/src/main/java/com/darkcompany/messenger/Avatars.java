@@ -175,7 +175,7 @@ final class Avatars {
                 if (!ap.isEmpty() && !p.isNull("avatar_url") && !cacheFile(c, ap).isFile()) { downloadPhoto(c, ap); changed = true; }
             }
         } catch (Exception e) {
-            android.util.Log.w("Avatars", "refresh: " + e);
+            if (BuildConfig.DEBUG) android.util.Log.w("Avatars", "refresh: " + e);
         }
         return changed;
     }

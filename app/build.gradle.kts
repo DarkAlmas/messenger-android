@@ -17,26 +17,32 @@ android {
         applicationId = "com.darkcompany.messenger.nativeapp"
         minSdk = 29
         targetSdk = 37
-        versionCode = 3
-        versionName = "3.0-native"
+        versionCode = 4
+        versionName = "4.0-native"
         // Метка сборки (время МСК) — видна в подзаголовке экрана «Чаты»
         buildConfigField("String", "BUILD_TIME", "\"$buildTime\"")
         buildConfigField("String", "UPDATE_REPO", "\"DarkAlmas/messenger-android\"")
         ndk {
             // libsignal: только 64-битные ARM-телефоны (библиотека ~70 МБ на ABI)
-            abiFilters += listOf("arm64-v8a")
+            abiFilters += listOf("arm64-v8a", "x86_64")
         }
     }
-    // Один и тот же debug-ключ (хранится вне git: ../../android-native-keys), чтобы обновления ставились поверх
-    val sharedKey = rootProject.file("../android-native-keys/debug.keystore")
-    if (sharedKey.exists()) {
-        signingConfigs.getByName("debug") {
-            storeFile = sharedKey
-            storePassword = "android"; keyAlias = "androiddebugkey"; keyPassword = "android"
+    // Release-ключ: путь и пароль только из env или ~/.gradle/gradle.properties (MSGR_STORE_FILE, MSGR_STORE_PASSWORD, MSGR_KEY_ALIAS)
+    fun secret(n: String): String? = System.getenv(n) ?: (project.findProperty(n) as String?)
+    val relStore = secret("MSGR_STORE_FILE")
+    if (relStore != null) {
+        signingConfigs.create("release") {
+            storeFile = file(relStore)
+            storeType = "PKCS12"
+            storePassword = secret("MSGR_STORE_PASSWORD")
+            keyAlias = secret("MSGR_KEY_ALIAS") ?: "messenger"
+            keyPassword = secret("MSGR_STORE_PASSWORD")
         }
     }
     buildTypes {
         release {
+            isDebuggable = false
+            if (relStore != null) signingConfig = signingConfigs.getByName("release")
             optimization {
                 enable = false
             }

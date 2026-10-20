@@ -1,11 +1,8 @@
 package com.darkcompany.messenger;
 
 import android.app.Activity;
-import android.app.DownloadManager;
-import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
@@ -58,7 +55,7 @@ final class Updater {
                             .setPositiveButton("Установить", (d, w) -> download(a, fu, code))
                             .setNegativeButton("Позже", null).show();
                 });
-            } catch (Exception e) { android.util.Log.w("Upd", "check: " + e); }
+            } catch (Exception e) { if (BuildConfig.DEBUG) android.util.Log.w("Upd", "check: " + e); }
         }, "updater").start();
     }
 
@@ -73,29 +70,60 @@ final class Updater {
             return;
         }
         Context app = a.getApplicationContext();
-        File ext = new File(app.getExternalFilesDir(null), "update-" + code + ".apk");
-        ext.delete();
-        DownloadManager dm = (DownloadManager) app.getSystemService(Context.DOWNLOAD_SERVICE);
-        DownloadManager.Request rq = new DownloadManager.Request(Uri.parse(url))
-                .setTitle("Мессенджер: обновление").setMimeType("application/vnd.android.package-archive")
-                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
-                .setDestinationUri(Uri.fromFile(ext));
-        final long id = dm.enqueue(rq);
         Ui.toast(a, "Загружаю обновление…");
-        BroadcastReceiver br = new BroadcastReceiver() {
-            @Override public void onReceive(Context c, Intent i) {
-                if (i.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1) != id) return;
-                try { app.unregisterReceiver(this); } catch (Exception ignored) { }
-                try (android.database.Cursor cu = dm.query(new DownloadManager.Query().setFilterById(id))) {
-                    if (cu == null || !cu.moveToFirst() || cu.getInt(cu.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) != DownloadManager.STATUS_SUCCESSFUL) {
-                        android.widget.Toast.makeText(app, "Не удалось загрузить обновление", android.widget.Toast.LENGTH_LONG).show(); return;
-                    }
-                }
-                install(app, ext, code);
+        // Скачивание в cacheDir (не во внешнюю память), без DownloadManager и без экспортируемого ресивера
+        new Thread(() -> {
+            File dst = target(app, code);
+            try {
+                fetch(url, dst);
+                String why = verify(app, dst, code);
+                if (why != null) { dst.delete(); toastMain(app, "Обновление отклонено: " + why); return; }
+                install(app, dst);
+            } catch (Exception e) { dst.delete(); toastMain(app, "Не удалось загрузить обновление"); }
+        }, "update-dl").start();
+    }
+
+    private static final long MAX_APK = 200L * 1024 * 1024;
+    private static void fetch(String url, File dst) throws Exception {
+        for (int hop = 0; hop < 5; hop++) {
+            java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+            c.setInstanceFollowRedirects(false); c.setConnectTimeout(20000); c.setReadTimeout(60000);
+            int code = c.getResponseCode();
+            if (code / 100 == 3) {
+                String loc = c.getHeaderField("Location"); c.disconnect();
+                if (loc == null || !loc.startsWith("https://")) throw new java.io.IOException("redirect");
+                url = loc; continue;
             }
-        };
-        IntentFilter f = new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE);
-        if (Build.VERSION.SDK_INT >= 33) app.registerReceiver(br, f, Context.RECEIVER_EXPORTED); else app.registerReceiver(br, f);
+            if (code != 200) throw new java.io.IOException("HTTP " + code);
+            long n = 0;
+            try (java.io.InputStream in = c.getInputStream(); java.io.OutputStream out = new java.io.FileOutputStream(dst)) {
+                byte[] b = new byte[65536]; int r;
+                while ((r = in.read(b)) > 0) { n += r; if (n > MAX_APK) throw new java.io.IOException("too big"); out.write(b, 0, r); }
+            }
+            return;
+        }
+        throw new java.io.IOException("too many redirects");
+    }
+
+    /** null — можно ставить; иначе причина отказа. Та же подпись, тот же пакет, версия новее установленной. */
+    static String verify(Context c, File apk, int expectCode) {
+        try {
+            android.content.pm.PackageManager pm = c.getPackageManager();
+            int fl = android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES;
+            android.content.pm.PackageInfo upd = pm.getPackageArchiveInfo(apk.getAbsolutePath(), fl);
+            if (upd == null) return "файл повреждён";
+            if (!c.getPackageName().equals(upd.packageName)) return "другое приложение";
+            android.content.pm.PackageInfo cur = pm.getPackageInfo(c.getPackageName(), fl);
+            if (upd.getLongVersionCode() <= cur.getLongVersionCode()) return "версия не новее установленной";
+            if (upd.signingInfo == null || cur.signingInfo == null || upd.signingInfo.hasMultipleSigners() || cur.signingInfo.hasMultipleSigners()) return "нет подписи";
+            android.content.pm.Signature[] a = upd.signingInfo.getApkContentsSigners(), b = cur.signingInfo.getApkContentsSigners();
+            if (a == null || b == null || a.length != 1 || b.length != 1 || !java.util.Arrays.equals(a[0].toByteArray(), b[0].toByteArray())) return "подпись не совпадает";
+            return null;
+        } catch (Exception e) { return "не удалось проверить подпись"; }
+    }
+
+    private static void toastMain(Context app, String m) {
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> android.widget.Toast.makeText(app, m, android.widget.Toast.LENGTH_LONG).show());
     }
 
     /** После возврата из настроек «неизвестные источники» — продолжить загрузку. */
@@ -106,17 +134,12 @@ final class Updater {
         pending = null; download(a, (String) p[0], (Integer) p[1]);
     }
 
-    private static void install(Context app, File ext, int code) {
+    private static void install(Context app, File dst) {
         try {
-            File dst = target(app, code); // FileProvider отдаёт cache/chat-files
-            try (java.io.InputStream in = new java.io.FileInputStream(ext); java.io.OutputStream out = new java.io.FileOutputStream(dst)) {
-                byte[] b = new byte[65536]; int r; while ((r = in.read(b)) > 0) out.write(b, 0, r);
-            }
-            ext.delete();
             Uri u = androidx.core.content.FileProvider.getUriForFile(app, app.getPackageName() + ".files", dst);
             Intent i = new Intent(Intent.ACTION_VIEW).setDataAndType(u, "application/vnd.android.package-archive")
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
             app.startActivity(i);
-        } catch (Exception e) { android.widget.Toast.makeText(app, "Не удалось открыть установщик: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show(); }
+        } catch (Exception e) { toastMain(app, "Не удалось открыть установщик"); }
     }
 }

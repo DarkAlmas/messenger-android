@@ -270,7 +270,7 @@ public class ChatActivity extends AppCompatActivity {
         failCount.merge(mid, 1, Integer::sum);
         try { dec.put(mid, new JSONObject().put("err", "fail").put("why", ex.getClass().getSimpleName())); } catch (Exception ignored) { }
         decSig.put(mid, sigCt);
-        android.util.Log.w("E2E", "decrypt " + mid + " failed: " + ex);
+        if (BuildConfig.DEBUG) android.util.Log.w("E2E", "decrypt " + mid + " failed: " + ex);
     }
     private final Map<String, String> decSig = new java.util.concurrent.ConcurrentHashMap<>();
     private boolean isGroup() { return "group".equals(kind); }
@@ -806,7 +806,7 @@ public class ChatActivity extends AppCompatActivity {
         }
         if (upto == null || (deliveredUpto != null && Ui.instant(deliveredUpto) >= Ui.instant(upto))) return;
         try { Api.get(this).rpc("mark_delivered", new JSONObject().put("p_chat", chatId).put("p_upto", upto)); deliveredUpto = upto; }
-        catch (Exception e) { android.util.Log.w("Dlv", "mark_delivered: " + e); }
+        catch (Exception e) { if (BuildConfig.DEBUG) android.util.Log.w("Dlv", "mark_delivered: " + e); }
     }
 
     /** Отправка записанного голосового/кружка: AES-256-GCM, chat/<chat>/<uuid>_file.bin, octet-stream; vk/d/w — внутри шифротекста. */
@@ -852,7 +852,7 @@ public class ChatActivity extends AppCompatActivity {
         markedUpto = upto;
         io.execute(() -> {
             try { Api.get(this).rpc("mark_read", new JSONObject().put("p_chat", chatId).put("p_upto", upto)); }
-            catch (Exception e) { markedUpto = null; android.util.Log.w("Read", "mark_read: " + e); }
+            catch (Exception e) { markedUpto = null; if (BuildConfig.DEBUG) android.util.Log.w("Read", "mark_read: " + e); }
         });
     }
 
