@@ -32,7 +32,7 @@ public class SettingsActivity extends AppCompatActivity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         if (!Api.get(this).hasSession()) { finish(); return; }
-        body = Site.scaffold(this, Site.pageTitle(this, "Настройки", null, null, null), 1);
+        body = Site.scaffold(this, Site.pageTitle(this, "Настройки", null, null, null), 2);
         build();
     }
 
@@ -46,22 +46,24 @@ public class SettingsActivity extends AppCompatActivity {
         paintStorage();
     }
 
+    private View rowNotif;
     private void build() {
         body.removeAllViews();
         String uid = Api.get(this).uid();
         JSONObject p = Avatars.merged(this, uid);
         String un = p.optString("username", "");
-        String dn = p.isNull("display_name") || p.optString("display_name").isEmpty() ? un : p.optString("display_name");
-        // .mini-head
+        String dn = p.isNull("display_name") || p.optString("display_name").isEmpty() ? "@" + un : p.optString("display_name");
+        // button.mini-head: высота 80, padding 12 16, аватар 56, имя 17px/500, ник 14px/500 серым
         LinearLayout mh = new LinearLayout(this); mh.setGravity(Gravity.CENTER_VERTICAL);
-        mh.setPadding(Ui.dp(this, 20), Ui.dp(this, 16), Ui.dp(this, 20), Ui.dp(this, 8));
-        mh.addView(Avatars.view(this, uid, dn, 72), new LinearLayout.LayoutParams(Ui.dp(this, 72), Ui.dp(this, 72)));
-        LinearLayout tc = new LinearLayout(this); tc.setOrientation(LinearLayout.VERTICAL); tc.setPadding(Ui.dp(this, 20), 0, 0, 0);
-        tc.addView(Site.label(this, dn.isEmpty() ? "Мой профиль" : dn, 19, Site.text(this), true));
-        tc.addView(Site.label(this, un.isEmpty() ? "" : "@" + un, 15, Site.text2(this), false));
+        mh.setPadding(Ui.dp(this, 16), Ui.dp(this, 12), Ui.dp(this, 16), Ui.dp(this, 12));
+        mh.addView(Avatars.view(this, uid, dn, 56), new LinearLayout.LayoutParams(Ui.dp(this, 56), Ui.dp(this, 56)));
+        LinearLayout tc = new LinearLayout(this); tc.setOrientation(LinearLayout.VERTICAL); tc.setPadding(Ui.dp(this, 16), 0, 0, 0);
+        tc.addView(Site.label(this, dn, 17f, Site.text(this), 500));
+        tc.addView(Site.label(this, un.isEmpty() ? "" : "@" + un, 14f, Site.text2(this), 500));
         mh.addView(tc, new LinearLayout.LayoutParams(0, -2, 1f));
         mh.setOnClickListener(v -> openProfile());
-        body.addView(mh);
+        LinearLayout.LayoutParams ml = new LinearLayout.LayoutParams(-1, Ui.dp(this, 80)); ml.topMargin = Ui.dp(this, 8); ml.bottomMargin = Ui.dp(this, 12);
+        body.addView(mh, ml);
 
         LinearLayout g = Site.group(this, body, "Аккаунт");
         Site.row(this, g, "person", "Профиль", null, null, v -> openProfile());
@@ -70,40 +72,45 @@ public class SettingsActivity extends AppCompatActivity {
         g.addView(seenBox);
         paintSeenBox();
         rowDevices = Site.row(this, g, "devices", "Устройства", null, getSharedPreferences("ui", 0).getString("dev_count", ""), v -> devices());
-        Site.row(this, g, "key", "Шифрование", null, E2e.lastError == null ? "Включено" : "Ошибка", v -> thisDevice());
-        rowBackup = Site.row(this, g, "cloud_upload", "Резервная копия чатов", null, getSharedPreferences("ui", 0).getString("backup_val", "Выкл."), v -> backup());
+        Site.row(this, g, "key", "Это устройство", null, "Приложение · Android", v -> thisDevice());
 
         g = Site.group(this, body, "Оформление");
-        rowTheme = Site.row(this, g, "palette", "Тема", null, Avatars.THEMES[Avatars.themeIndex(this)], v -> toggle(themeBox));
+        rowTheme = Site.row(this, g, "palette", "Тема", null, THEME_L[Avatars.themeIndex(this)], v -> toggle(themeBox));
         themeBox = new LinearLayout(this); themeBox.setOrientation(LinearLayout.VERTICAL); themeBox.setVisibility(View.GONE);
         g.addView(themeBox);
         paintThemeBox();
 
         g = Site.group(this, body, "Уведомления");
-        LinearLayout nr = Site.row(this, g, "notifications", "Уведомления", null, null, null);
-        com.google.android.material.materialswitch.MaterialSwitch sw = new com.google.android.material.materialswitch.MaterialSwitch(this);
-        sw.setChecked(Notify.enabled(this));
+        LinearLayout nr = Site.row(this, g, "notifications", "Уведомления", notifSub(Notify.enabled(this)), null, null);
+        rowNotif = nr;
+        { // как на сайте: строка-переключатель 57 + отступ 10 снизу группы
+            android.view.ViewGroup.LayoutParams lp0 = nr.getLayoutParams();
+            if (lp0 instanceof android.view.ViewGroup.MarginLayoutParams) ((android.view.ViewGroup.MarginLayoutParams) lp0).bottomMargin = Ui.dp(this, 10);
+            nr.setMinimumHeight(Ui.dp(this, 57));
+        }
+        android.widget.CompoundButton sw = Site.toggle(this, Notify.enabled(this));
         sw.setOnCheckedChangeListener((bt, on) -> {
             Notify.setEnabled(this, on);
             if (on && android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
                 requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 7);
+            Site.setSub(rowNotif, notifSub(on));
+            bt.invalidate();
             Ui.toast(this, on ? "Уведомления включены" : "Уведомления выключены");
         });
-        nr.addView(sw);
+        LinearLayout.LayoutParams swl = new LinearLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 32)); swl.leftMargin = Ui.dp(this, 16);
+        nr.addView(sw, swl);
         nr.setOnClickListener(v -> sw.toggle());
-        Site.row(this, g, "volume_up", "Звук", null, "Системный", v -> {
-            Intent i = new Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
-                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, getPackageName()).putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, Notify.CH);
-            try { startActivity(i); } catch (Exception e) { Ui.toast(this, "Не удалось открыть настройки звука"); }
-        });
 
         g = Site.group(this, body, "Данные");
         String mail = Api.get(this).email();
-        Site.row(this, g, "mail", "Почта", null, mail.isEmpty() ? "—" : mail, v -> new MaterialAlertDialogBuilder(this).setTitle("Почта")
-                .setMessage("Почта аккаунта: " + (mail.isEmpty() ? "—" : mail) + "\n\nПочта используется для входа. Её видите только вы.").setPositiveButton("OK", null).show());
+        Site.row(this, g, "mail", "Почта", null, mail.isEmpty() ? "—" : mail, v -> Site.sheet(this, "Почта", Site.kv(this, "Почта аккаунта", mail.isEmpty() ? "—" : mail),
+                Site.hint(this, "Почта используется для входа. Её видите только вы.")).show());
         rowStorage = Site.row(this, g, "storage", "Хранилище", null, "—", v -> storage());
-        Site.row(this, g, "language", "Язык", null, "Русский", v -> new MaterialAlertDialogBuilder(this).setTitle("Язык")
-                .setSingleChoiceItems(new String[]{"Русский"}, 0, null).setMessage(null).setPositiveButton("OK", null).show());
+        rowBackup = Site.row(this, g, "backup", "Резервная копия", getSharedPreferences("ui", 0).getString("backup_val", "не создана"), null, v -> backup());
+        Site.row(this, g, "language", "Язык", null, "Русский", v -> {
+            android.widget.RadioButton rb = new android.widget.RadioButton(this); rb.setText("Русский"); rb.setChecked(true); rb.setTextSize(16); rb.setTextColor(Site.text(this));
+            Site.sheet(this, "Язык", rb, Site.hint(this, "Другие языки пока недоступны.")).show();
+        });
 
         g = Site.group(this, body, "Прочее");
         Site.row(this, g, "help", "Помощь", null, "о шифровании", v -> Ui.toast(this,
@@ -111,16 +118,27 @@ public class SettingsActivity extends AppCompatActivity {
         Site.row(this, g, "group_add", "Новая группа", null, null, v -> toChats("new_group"));
         Site.row(this, g, "qr_code_scanner", "Войти на сайте (QR)", null, null, v -> toChats("qr"));
         Site.row(this, g, "system_update", "Проверить обновления", null, null, v -> Updater.check(this, true));
-        Site.row(this, g, "logout", "Выйти", null, null, v -> new MaterialAlertDialogBuilder(this).setTitle("Выйти из аккаунта?")
-                .setMessage("Ключи шифрования этого устройства будут удалены. После входа телефон станет новым устройством.")
-                .setPositiveButton("Выйти", (d, w) -> ChatsActivity.logout(this)).setNegativeButton("Отмена", null).show());
+        Site.row(this, g, "logout", "Выйти", null, null, v -> confirmRed("Выйти из аккаунта? Ключи шифрования этого устройства будут удалены. После входа телефон станет новым устройством.", "Выйти",
+                () -> runOnUiThread(() -> ChatsActivity.logout(this))));
 
         String ver = "?";
         try { ver = getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception ignored) { }
-        TextView bi = Site.label(this, "Версия " + ver + " · сборка " + BuildConfig.BUILD_TIME, 12, Site.text2(this), false);
-        bi.setGravity(Gravity.CENTER); bi.setPadding(0, Ui.dp(this, 16), 0, 0);
+        TextView bi = Site.label(this, "Версия " + ver + " · сборка " + BuildConfig.BUILD_TIME, 12f, Site.text2(this), 400);
+        bi.setGravity(Gravity.CENTER); bi.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 8));
         body.addView(bi, new LinearLayout.LayoutParams(-1, -2));
         paintStorage();
+    }
+    private static final String[] THEME_L = {"Тёмная", "Светлая", "Системная"};
+    private String notifSub(boolean on) {
+        if (!on) return "выключены";
+        boolean granted = android.os.Build.VERSION.SDK_INT < 33 || checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        return granted ? "всплывающие и звук" : "звук и счётчик (всплывающие запрещены в настройках)";
+    }
+    /** askConfirm сайта: текст, «Отмена» и красная кнопка действия. */
+    private void confirmRed(String text, String ok, Runnable bg) {
+        androidx.appcompat.app.AlertDialog a = new MaterialAlertDialogBuilder(this).setMessage(text).setNegativeButton("Отмена", null)
+                .setPositiveButton(ok, (x, w) -> io.execute(bg)).show();
+        a.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setTextColor(Site.danger(this));
     }
 
     private void openProfile() { startActivity(new Intent(this, ProfileActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)); }
@@ -229,7 +247,7 @@ public class SettingsActivity extends AppCompatActivity {
     private void showDevices(JSONArray d) {
         Site.setValue(rowDevices, String.valueOf(d.length()));
         LinearLayout c = new LinearLayout(this); c.setOrientation(LinearLayout.VERTICAL); c.setPadding(0, 0, 0, Ui.dp(this, 8));
-        final androidx.appcompat.app.AlertDialog[] dlg = new androidx.appcompat.app.AlertDialog[1];
+        final android.app.Dialog[] dlg = new android.app.Dialog[1];
         java.util.List<JSONObject> others = new java.util.ArrayList<>();
         JSONObject cur = null;
         for (int i = 0; i < d.length(); i++) { JSONObject o = d.optJSONObject(i); if (o == null) continue; if (o.optBoolean("is_current")) cur = o; else others.add(o); }
@@ -248,14 +266,13 @@ public class SettingsActivity extends AppCompatActivity {
             LinearLayout g2 = Site.group(this, c, "Активные сеансы");
             for (JSONObject o : others) { String[] u = uaName(o.optString("user_agent")); Site.row(this, g2, u[1], u[0], devSub(o), null, v -> session(o, dlg)); }
         }
-        android.widget.ScrollView sv = new android.widget.ScrollView(this); sv.addView(c);
-        dlg[0] = new MaterialAlertDialogBuilder(this).setTitle("Устройства").setView(sv).setPositiveButton("Закрыть", null).show();
+        dlg[0] = Site.sheet(this, "Устройства", c); dlg[0].show();
     }
     private void danger(LinearLayout row) {
         for (int i = 0; i < row.getChildCount(); i++) { View v = row.getChildAt(i); if (v instanceof TextView) ((TextView) v).setTextColor(Site.danger(this)); }
         TextView l = row.findViewWithTag("label"); if (l != null) l.setTextColor(Site.danger(this));
     }
-    private void session(JSONObject d, androidx.appcompat.app.AlertDialog[] parent) {
+    private void session(JSONObject d, android.app.Dialog[] parent) {
         String[] u = uaName(d.optString("user_agent"));
         String created = d.optString("created_at");
         String msg = "IP: " + (d.isNull("ip") ? "—" : d.optString("ip")) + "\nПоследняя активность: " + (d.optBoolean("is_current") ? "в сети" : Site.seenText(Ui.instant(d.optString("refreshed_at", created)), System.currentTimeMillis()))
@@ -270,11 +287,7 @@ public class SettingsActivity extends AppCompatActivity {
                     } catch (Exception e) { Ui.toast(this, "Не удалось завершить сеанс: " + Ui.err(e)); }
                 })).show();
     }
-    private void confirm(String text, Runnable bg) {
-        androidx.appcompat.app.AlertDialog a = new MaterialAlertDialogBuilder(this).setMessage(text).setNegativeButton("Отмена", null)
-                .setPositiveButton("Завершить", (x, w) -> io.execute(bg)).show();
-        a.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setTextColor(Site.danger(this));
-    }
+    private void confirm(String text, Runnable bg) { confirmRed(text, "Завершить", bg); }
 
     // ---------- Шифрование: «Это устройство» ----------
     private void thisDevice() {
@@ -286,9 +299,9 @@ public class SettingsActivity extends AppCompatActivity {
                 JSONArray r = Api.get(this).select("devices_keys?select=identity_pub&device_id=eq." + id);
                 fp = r.length() == 0 ? "ключи не найдены на сервере" : fingerprint(r.getJSONObject(0).optString("identity_pub"));
             } catch (Exception e) { fp = "не удалось загрузить"; }
-            final String m = "ID устройства: " + (id == null ? "ключи шифрования ещё не созданы" : id) + "\n\nОтпечаток ключа:\n" + fp
-                    + "\n\nШифрование: Signal (сквозное): сообщения и файлы шифруются на устройстве." + (E2e.lastError == null ? "" : "\n\n⚠ " + E2e.lastError);
-            runOnUiThread(() -> new MaterialAlertDialogBuilder(this).setTitle("Это устройство").setMessage(m).setPositiveButton("OK", null).show());
+            final String fid = id == null ? "ключи шифрования ещё не созданы" : id, ffp = fp;
+            runOnUiThread(() -> Site.sheet(this, "Это устройство", Site.kv(this, "ID устройства", fid), Site.kv(this, "Отпечаток ключа", ffp),
+                    Site.kv(this, "Шифрование", "Signal (сквозное): сообщения и файлы шифруются на устройстве." + (E2e.lastError == null ? "" : "\n⚠ " + E2e.lastError))).show());
         });
     }
     static String fingerprint(String pub) throws Exception {
@@ -303,19 +316,20 @@ public class SettingsActivity extends AppCompatActivity {
     private void loadBackup() {
         try {
             JSONArray r = Api.get(this).select("key_backups?select=updated_at,size_bytes&user_id=eq." + Api.get(this).uid());
-            String v = r.length() == 0 ? "Выкл." : new java.text.SimpleDateFormat("d MMM yyyy", new java.util.Locale("ru")).format(new java.util.Date(Ui.instant(r.getJSONObject(0).optString("updated_at"))));
+            String v = r.length() == 0 ? "не создана" : new java.text.SimpleDateFormat("d MMM yyyy", new java.util.Locale("ru")).format(new java.util.Date(Ui.instant(r.getJSONObject(0).optString("updated_at"))));
             getSharedPreferences("ui", 0).edit().putString("backup_val", v).putString("backup_sub", r.length() == 0 ? "" : Ui.size(r.getJSONObject(0).optLong("size_bytes"))).apply();
-            runOnUiThread(() -> Site.setValue(rowBackup, v));
+            runOnUiThread(() -> Site.setSub(rowBackup, v));
         } catch (Exception ignored) { }
     }
     private void backup() {
-        String v = getSharedPreferences("ui", 0).getString("backup_val", "Выкл.");
+        String v = getSharedPreferences("ui", 0).getString("backup_val", "не создана");
         String sz = getSharedPreferences("ui", 0).getString("backup_sub", "");
-        new MaterialAlertDialogBuilder(this).setTitle("Резервная копия чатов")
-                .setMessage(("Выкл.".equals(v) ? "Резервная копия не создана." : "Последняя копия: " + v + (sz.isEmpty() ? "" : " · " + sz))
-                        + "\n\nКопия шифруется паролем на устройстве (Argon2), сервер её не может прочитать. Создать или восстановить копию пока можно на сайте: darkalmas.github.io/messenger-web → Настройки → Резервная копия.")
-                .setPositiveButton("Открыть сайт", (d, w) -> { try { startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://darkalmas.github.io/messenger-web/"))); } catch (Exception ignored) { } })
-                .setNegativeButton("Закрыть", null).show();
+        TextView open = Site.label(this, "Открыть сайт", 15f, 0xFFFFFFFF, 500);
+        open.setGravity(Gravity.CENTER); open.setBackground(Site.round(Site.primary(this), Ui.dp(this, 26)));
+        open.setMinHeight(Ui.dp(this, 46));
+        open.setOnClickListener(x -> { try { startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://darkalmas.github.io/messenger-web/"))); } catch (Exception ignored) { } });
+        Site.sheet(this, "Резервная копия", Site.kv(this, "Последняя копия", "не создана".equals(v) ? "не создана" : v + (sz.isEmpty() ? "" : " · " + sz)),
+                Site.hint(this, "Копия шифруется паролем на устройстве (Argon2), сервер не может её прочитать. Создать или восстановить копию пока можно на сайте: Настройки → Резервная копия."), open).show();
     }
 
     // ---------- Хранилище ----------
@@ -327,15 +341,21 @@ public class SettingsActivity extends AppCompatActivity {
     private void storage() {
         io.execute(() -> {
             long all = du(getCacheDir()) + du(getFilesDir()), cache = du(getCacheDir()), files = du(new java.io.File(getCacheDir(), "chat-files"));
-            String m = "Всего занято приложением: " + Ui.size(all) + "\nКэш: " + Ui.size(cache) + "\nРасшифрованные файлы в кэше: " + Ui.size(files)
-                    + "\nПрофилей в памяти: " + Avatars.profiles.size()
-                    + "\n\nКлючи шифрования и расшифрованная история хранятся отдельно и при очистке не удаляются.";
-            runOnUiThread(() -> new MaterialAlertDialogBuilder(this).setTitle("Хранилище").setMessage(m).setNegativeButton("Закрыть", null)
-                    .setPositiveButton("Очистить кэш", (d, w) -> io.execute(() -> {
-                        java.io.File[] l = getCacheDir().listFiles();
-                        if (l != null) for (java.io.File f : l) if (!f.getName().equals("updates")) rm(f);
-                        Ui.toast(this, "Кэш очищен"); paintStorage();
-                    })).show());
+            runOnUiThread(() -> {
+                TextView btn = Site.label(this, "Очистить кэш", 15f, Site.primary(this), 500);
+                btn.setGravity(Gravity.CENTER); btn.setMinHeight(Ui.dp(this, 46));
+                android.graphics.drawable.GradientDrawable gb = Site.round(0, Ui.dp(this, 26)); gb.setStroke(Ui.dp(this, 1), Site.divider(this)); btn.setBackground(gb);
+                android.app.Dialog[] dd = new android.app.Dialog[1];
+                btn.setOnClickListener(x -> io.execute(() -> {
+                    java.io.File[] l = getCacheDir().listFiles();
+                    if (l != null) for (java.io.File f : l) if (!f.getName().equals("updates")) rm(f);
+                    runOnUiThread(() -> { dd[0].dismiss(); Ui.toast(this, "Кэш очищен"); paintStorage(); });
+                }));
+                dd[0] = Site.sheet(this, "Хранилище", Site.kv(this, "Всего занято приложением", Ui.size(all)), Site.kv(this, "Кэш файлов", Ui.size(cache)),
+                        Site.kv(this, "Расшифрованные файлы / профили в памяти", Ui.size(files) + " / " + Avatars.profiles.size()),
+                        Site.hint(this, "Ключи шифрования и расшифрованная история хранятся отдельно и при очистке не удаляются."), btn);
+                dd[0].show();
+            });
         });
     }
     private static void rm(java.io.File f) { java.io.File[] l = f.listFiles(); if (l != null) for (java.io.File x : l) rm(x); f.delete(); }

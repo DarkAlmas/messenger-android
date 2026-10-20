@@ -126,7 +126,7 @@ final class MediaPlay {
         return circle;
     }
 
-    private static File plain(Context c, JSONObject f) throws Exception {
+    static File plain(Context c, JSONObject f) throws Exception {
         String p = f.getString("p");
         File have = plainFiles.get(p);
         if (have != null && have.exists()) return have;

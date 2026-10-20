@@ -63,7 +63,10 @@ public class ChatsActivity extends AppCompatActivity {
             }
         };
         list.setAdapter(adapter);
+        list.setOnTouchListener((v, e) -> { if (e.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) { Site.lastTouch[0] = e.getRawX(); Site.lastTouch[1] = e.getRawY(); } return false; });
+        list.setOnItemLongClickListener((p, v, pos, id) -> { JSONObject row = rows.get(pos); if (row.optBoolean("_archive")) return false; chatMenu(v, row); return true; });
         list.setOnItemClickListener((p, v, pos, id) -> {
+            if (rows.get(pos).optBoolean("_archive")) { showArchive = !showArchive; try { applyChats(lastArr); } catch (Exception ignored) { } loadChats(); return; }
             Intent i = new Intent(this, ChatActivity.class);
             i.putExtra("chat_id", ids.get(pos));
             i.putExtra("title", titles.get(pos));
@@ -84,42 +87,36 @@ public class ChatsActivity extends AppCompatActivity {
         JSONObject meP = Avatars.merged(this, myId);
         String myName = meP.isNull("display_name") || meP.optString("display_name").isEmpty() ? meP.optString("username", "") : meP.optString("display_name");
         LinearLayout meBtn = new LinearLayout(this); meBtn.setGravity(android.view.Gravity.CENTER_VERTICAL);
-        meBtn.addView(Avatars.view(this, myId, myName, 40), new LinearLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40)));
-        meName = Site.label(this, myName, 16, Site.text(this), true); meName.setPadding(Ui.dp(this, 12), 0, 0, 0);
+        meBtn.addView(Avatars.view(this, myId, myName, 42), new LinearLayout.LayoutParams(Ui.dp(this, 42), Ui.dp(this, 42)));
+        meName = Site.label(this, myName, 15f, Site.text(this), 700); meName.setPadding(Ui.dp(this, 10), 0, 0, 0);
         meBtn.addView(meName);
         meBtn.setOnClickListener(v -> startActivity(new Intent(this, ProfileActivity.class)));
-        meBtn.setPadding(Ui.dp(this, 4), 0, 0, 0);
-        top.addView(meBtn, new LinearLayout.LayoutParams(0, -2, 1f));
+        meBtn.setPadding(Ui.dp(this, 6), Ui.dp(this, 4), Ui.dp(this, 6), Ui.dp(this, 4));
+        top.addView(meBtn, new LinearLayout.LayoutParams(0, Ui.dp(this, 50), 1f));
         root.addView(top);
         // «Чаты ( ◌ Соединение… )»
         LinearLayout tr = new LinearLayout(this); tr.setGravity(android.view.Gravity.CENTER_VERTICAL);
-        tr.setPadding(Ui.dp(this, 16), Ui.dp(this, 12), Ui.dp(this, 16), Ui.dp(this, 4));
-        tr.addView(Site.label(this, "Чаты", 20, Site.text(this), true));
+        tr.setPadding(Ui.dp(this, 14), Ui.dp(this, 10), Ui.dp(this, 14), Ui.dp(this, 4));
+        tr.addView(Site.label(this, "Чаты", 20f, Site.text(this), 600));
         connRow = new LinearLayout(this); connRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
-        connRow.addView(Site.label(this, " (", 16, Site.text2(this), false));
+        connRow.addView(Site.label(this, " (", 15f, Site.text2(this), 400));
         connRow.addView(Site.spinner(this));
-        connTxt = Site.label(this, "Соединение…", 16, Site.text2(this), false); connTxt.setPadding(Ui.dp(this, 4), 0, 0, 0);
+        connTxt = Site.label(this, "Соединение…", 15f, Site.text2(this), 400); connTxt.setPadding(Ui.dp(this, 2), 0, 0, 0);
         connRow.addView(connTxt);
-        connRow.addView(Site.label(this, " )", 16, Site.text2(this), false));
+        connRow.addView(Site.label(this, ")", 15f, Site.text2(this), 400));
         tr.addView(connRow);
         root.addView(tr);
         // поиск собеседника + «Написать»
         LinearLayout find = new LinearLayout(this); find.setGravity(android.view.Gravity.CENTER_VERTICAL);
         find.setPadding(Ui.dp(this, 12), Ui.dp(this, 10), Ui.dp(this, 12), Ui.dp(this, 10));
-        final android.widget.EditText findIn = new android.widget.EditText(this);
-        findIn.setHint("Никнейм собеседника (@nick)"); findIn.setSingleLine(true); findIn.setTextSize(16);
-        findIn.setTextColor(Site.text(this)); findIn.setHintTextColor(Site.text2(this));
-        android.graphics.drawable.GradientDrawable fb = Site.round(Site.container(this), Ui.dp(this, 14)); fb.setStroke(Math.max(1, Ui.dp(this, 1)), getColor(R.color.site_divider));
-        findIn.setBackground(fb); findIn.setPadding(Ui.dp(this, 14), 0, Ui.dp(this, 14), 0);
+        final android.widget.EditText findIn = Site.input(this, "Никнейм собеседника (@nick)");
         findIn.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_GO);
-        find.addView(findIn, new LinearLayout.LayoutParams(0, Ui.dp(this, 52), 1f));
-        android.widget.TextView go = Site.label(this, "Написать", 16, getColor(android.R.color.white), true);
-        go.setGravity(android.view.Gravity.CENTER); go.setBackground(Site.round(Site.primary(this), Ui.dp(this, 26)));
-        go.setPadding(Ui.dp(this, 18), 0, Ui.dp(this, 18), 0);
+        find.addView(findIn, new LinearLayout.LayoutParams(0, Ui.dp(this, 46), 1f));
+        android.widget.TextView go = Site.button(this, "Написать"); go.setTextSize(15);
         Runnable doFind = () -> { String n = findIn.getText().toString(); findIn.setText(""); createDirect(n); };
         go.setOnClickListener(v -> doFind.run());
         findIn.setOnEditorActionListener((v, id, e) -> { doFind.run(); return true; });
-        LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(-2, Ui.dp(this, 52)); gl.leftMargin = Ui.dp(this, 10);
+        LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(-2, Ui.dp(this, 46)); gl.leftMargin = Ui.dp(this, 8);
         find.addView(go, gl);
         root.addView(find);
         android.widget.FrameLayout frame = new android.widget.FrameLayout(this);
@@ -278,6 +275,14 @@ public class ChatsActivity extends AppCompatActivity {
                 if (!online) { connected = false; runOnUiThread(this::paintTitle); return; }
                 String r = Api.get(this).rpc("list_chats", new JSONObject()).trim();
                 JSONArray arr = r.isEmpty() ? new JSONArray() : new JSONArray(r);
+                // настройки чатов (закреп, без звука, архив, роль) — как на сайте
+                try {
+                    JSONArray prefs = Api.get(this).select("chat_members?select=chat_id,pinned,muted_until,archived,role&user_id=eq." + Api.get(this).uid());
+                    java.util.Map<String, JSONObject> pm = new java.util.HashMap<>();
+                    for (int i = 0; i < prefs.length(); i++) pm.put(prefs.getJSONObject(i).optString("chat_id"), prefs.getJSONObject(i));
+                    for (int i = 0; i < arr.length(); i++) { JSONObject o = arr.getJSONObject(i); JSONObject q = pm.get(o.optString("chat_id"));
+                        if (q != null) for (String k : new String[]{"pinned", "muted_until", "archived", "role"}) o.put(k, q.opt(k)); }
+                } catch (Exception ignored) { }
                 Cache.putChats(this, arr.toString());
                 if (!connected) { connected = true; runOnUiThread(this::paintTitle); }
                 delivered(arr);
@@ -312,6 +317,31 @@ public class ChatsActivity extends AppCompatActivity {
                 if (cid.matches("[0-9a-f-]{36}")) runOnUiThread(() -> startActivity(new Intent(this, ChatActivity.class).putExtra("chat_id", cid)
                         .putExtra("title", "@" + nick).putExtra("kind", "direct").putExtra("peer_id", peer)));
             } catch (Exception e) { authFail(e); }
+        });
+    }
+
+    /** chatMenuItems сайта: закрепить, без звука (1 ч / 8 ч / 1 день / навсегда) или включить звук, архив. */
+    private void chatMenu(android.view.View anchor, JSONObject c) {
+        String id = c.optString("chat_id");
+        java.util.List<Site.Item> it = new java.util.ArrayList<>();
+        boolean pinned = c.optBoolean("pinned"), arch = c.optBoolean("archived");
+        it.add(new Site.Item("push_pin", pinned ? "Открепить" : "Закрепить", false, () -> prefs(id, "p_pinned", !pinned, pinned ? "Чат откреплён" : "Чат закреплён")));
+        long H = 3600000L;
+        if (muted(c)) it.add(new Site.Item("notifications", "Включить звук", false, () -> prefs(id, "p_unmute", true, "Звук включён")));
+        else {
+            it.add(new Site.Item("notifications_off", "Без звука на 1 час", false, () -> prefs(id, "p_muted_until", iso(System.currentTimeMillis() + H), "Уведомления отключены")));
+            it.add(new Site.Item("notifications_off", "Без звука на 8 часов", false, () -> prefs(id, "p_muted_until", iso(System.currentTimeMillis() + 8 * H), "Уведомления отключены")));
+            it.add(new Site.Item("notifications_off", "Без звука на 1 день", false, () -> prefs(id, "p_muted_until", iso(System.currentTimeMillis() + 24 * H), "Уведомления отключены")));
+            it.add(new Site.Item("notifications_off", "Без звука навсегда", false, () -> prefs(id, "p_muted_until", "9999-12-31T00:00:00Z", "Уведомления отключены")));
+        }
+        it.add(new Site.Item(arch ? "unarchive" : "archive", arch ? "Вернуть из архива" : "В архив", false, () -> prefs(id, "p_archived", !arch, arch ? "Чат возвращён из архива" : "Чат перенесён в архив")));
+        Site.menu(anchor, Site.lastTouch[0], Site.lastTouch[1], it);
+    }
+    private static String iso(long ms) { java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.ROOT); f.setTimeZone(java.util.TimeZone.getTimeZone("UTC")); return f.format(new java.util.Date(ms)); }
+    private void prefs(String chat, String k, Object v, String done) {
+        io.execute(() -> {
+            try { Api.get(this).rpc("set_chat_prefs", new JSONObject().put("p_chat", chat).put(k, v)); Ui.toast(this, done); loadChats(); }
+            catch (Exception e) { Ui.toast(this, Ui.err(e)); }
         });
     }
 
@@ -414,12 +444,24 @@ public class ChatsActivity extends AppCompatActivity {
         return t;
     }
     /** Рисует список (из сервера или из офлайн-кэша). UI-поток. */
+    private boolean showArchive = false;
+    private JSONArray lastArr = new JSONArray();
+    static boolean muted(JSONObject c) { return !c.isNull("muted_until") && c.has("muted_until") && Ui.instant(c.optString("muted_until")) > System.currentTimeMillis(); }
     private void applyChats(JSONArray arr) throws Exception {
+        lastArr = arr;
         JSONObject pv = Cache.previews(this);
         List<String> cid = new ArrayList<>(), ct = new ArrayList<>();
         List<JSONObject> rs = new ArrayList<>();
-        for (int i = 0; i < arr.length(); i++) {
-            JSONObject o = arr.getJSONObject(i);
+        List<JSONObject> sorted = new ArrayList<>();
+        int nArch = 0, unArch = 0;
+        for (int i = 0; i < arr.length(); i++) { JSONObject o = arr.getJSONObject(i); if (o.optBoolean("archived")) { nArch++; unArch += o.optInt("unread"); } if (o.optBoolean("archived") == showArchive) sorted.add(o); }
+        sorted.sort((x, y) -> { int pp = Boolean.compare(y.optBoolean("pinned"), x.optBoolean("pinned")); return pp != 0 ? pp : Long.compare(Ui.instant(y.optString("last_at")), Ui.instant(x.optString("last_at"))); });
+        if (showArchive || nArch > 0) {
+            JSONObject a = new JSONObject().put("_archive", true).put("chat_id", "").put("_title", "Архив")
+                    .put("_sub", showArchive ? "Назад ко всем чатам" : nArch + " " + Site.plural(nArch, "чат", "чата", "чатов")).put("unread", showArchive ? 0 : unArch);
+            cid.add(""); ct.add("Архив"); rs.add(a);
+        }
+        for (JSONObject o : sorted) {
             String t = chatTitle(o);
             o.put("_title", t);
             JSONObject p = pv.optJSONObject(o.getString("chat_id"));
@@ -431,8 +473,8 @@ public class ChatsActivity extends AppCompatActivity {
         titles.clear(); titles.addAll(ct);
         rows.clear(); rows.addAll(rs);
         adapter.notifyDataSetChanged();
-        empty.setText("Пока нет чатов.\nНайдите собеседника по никнейму и нажмите «Написать».");
-        empty.setVisibility(rows.isEmpty() ? android.view.View.VISIBLE : android.view.View.GONE);
+        empty.setText(showArchive ? "В архиве пусто." : "Чатов пока нет. Найдите собеседника по никнейму.");
+        empty.setVisibility(sorted.isEmpty() ? android.view.View.VISIBLE : android.view.View.GONE);
     }
 
     /** Новое входящее: rpc mark_delivered (две серые галочки у отправителя) и локальное уведомление. Фоновый поток. */

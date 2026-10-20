@@ -103,12 +103,12 @@ final class Avatars {
         a.setGravity(Gravity.CENTER);
         a.setTextColor(Color.WHITE);
         a.setTextSize(sizeDp * 0.4f);
-        a.setTypeface(Typeface.DEFAULT_BOLD);
+        a.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        a.setIncludeFontPadding(false);
         GradientDrawable g = new GradientDrawable();
         g.setShape(GradientDrawable.OVAL);
         int col = colorFor(p, seed);
-        g.setOrientation(GradientDrawable.Orientation.TL_BR); // градиент, как на скриншотах Димы
-        g.setColors(new int[]{lighten(col), col});
+        g.setColor(col); // .ava: сплошной цвет (style.css), буква 600, размер 0.4 от аватара
         a.setBackground(g);
         return a;
     }

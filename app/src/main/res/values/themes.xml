@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.Messenger" parent="Theme.Material3.DayNight">
-        <item name="colorPrimary">#3D5AFE</item>
-        <item name="colorOnPrimary">#FFFFFF</item>
-        <item name="colorPrimaryContainer">#DEE0FF</item>
-        <item name="colorOnPrimaryContainer">#00105C</item>
-        <item name="colorSecondary">#5B5D72</item>
-        <item name="colorSecondaryContainer">#E0E1F9</item>
-        <item name="colorSurface">#FBF8FF</item>
+        <item name="colorPrimary">@color/web_color_primary</item>
+        <item name="colorOnPrimary">@color/web_color_on_primary</item>
+        <item name="colorPrimaryContainer">@color/web_color_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/web_color_on_primary_container</item>
+        <item name="colorSecondary">@color/web_color_secondary</item>
+        <item name="colorSecondaryContainer">@color/web_color_secondary_container</item>
+        <item name="colorSurface">@color/web_color_surface</item>
         <item name="colorSurfaceContainerLowest">#FFFFFF</item>
-        <item name="colorSurfaceContainer">#F0EDF7</item>
-        <item name="colorSurfaceContainerHigh">#EAE7F1</item>
-        <item name="colorSurfaceContainerHighest">#E4E1EC</item>
+        <item name="colorSurfaceContainer">@color/web_color_surface_container</item>
+        <item name="colorSurfaceContainerHigh">@color/web_color_surface_high</item>
+        <item name="colorSurfaceContainerHighest">@color/web_color_surface_highest</item>
         <item name="android:statusBarColor">#FBF8FF</item>
         <item name="android:windowLightStatusBar">true</item>
     </style>
@@ -19,13 +19,13 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
     </style>
-    <color name="site_text">#1B1B21</color>
-    <color name="site_text2">#5D5E72</color>
-    <color name="site_chatbg">#E9E6F4</color>
-    <color name="site_in">#FFFFFF</color>
-    <color name="site_out">#3D5AFE</color>
-    <color name="site_inmeta">#8E8E93</color>
-    <color name="site_divider">#14000000</color>
-    <color name="site_danger">#E53935</color>
-    <color name="site_page">#FBF8FF</color>
+    <color name="site_text">@color/web_color_text</color>
+    <color name="site_text2">@color/web_color_text_secondary</color>
+    <color name="site_chatbg">@color/web_color_chat_bg</color>
+    <color name="site_in">@color/web_bubble_in_bg</color>
+    <color name="site_out">@color/web_bubble_out_bg</color>
+    <color name="site_inmeta">@color/web_bubble_in_meta</color>
+    <color name="site_divider">@color/web_color_divider</color>
+    <color name="site_danger">@color/web_color_danger</color>
+    <color name="site_page">@color/web_color_surface_lowest</color>
 </resources>

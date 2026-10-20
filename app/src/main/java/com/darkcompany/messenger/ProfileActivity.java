@@ -48,7 +48,7 @@ public class ProfileActivity extends AppCompatActivity {
         });
     });
 
-    private TextView nameV, nickV, bioV, counter;
+    private TextView nameV, nickV, bioV, counter, cam;
     private LinearLayout editCard;
     private EditText letterIn;
     private int chosen;
@@ -61,31 +61,33 @@ public class ProfileActivity extends AppCompatActivity {
         letter = Avatars.myLetter(this);
         color = Avatars.myColor(this);
         chosen = color;
-        LinearLayout col = Site.scaffold(this, Site.pageTitle(this, "Профиль", "edit", "Изменить профиль", v -> toggleEdit()), 2);
-        // .profile-head: большой аватар 120dp с кнопкой-камерой, имя, «в сети»
+        LinearLayout col = Site.scaffold(this, Site.pageTitle(this, "Профиль", "edit", "Изменить профиль", v -> toggleEdit()), 1);
+        // .profile-head: padding 24 16 16; аватар .ava.xl 96 (буква 38px/600); имя 22px/500 (отступ 12); «в сети» 14px primary
         LinearLayout head = new LinearLayout(this); head.setOrientation(LinearLayout.VERTICAL); head.setGravity(Gravity.CENTER_HORIZONTAL);
-        head.setPadding(0, Ui.dp(this, 24), 0, Ui.dp(this, 8));
+        head.setPadding(Ui.dp(this, 16), Ui.dp(this, 24), Ui.dp(this, 16), Ui.dp(this, 24));
         FrameLayout ab = new FrameLayout(this);
         avatarBox = new FrameLayout(this);
-        ab.addView(avatarBox, new FrameLayout.LayoutParams(Ui.dp(this, 120), Ui.dp(this, 120), Gravity.CENTER));
-        TextView cam = Site.icon(this, "photo_camera", 20, 0xFFFFFFFF);
-        cam.setBackground(Site.round(Site.primary(this), Ui.dp(this, 20)));
+        ab.addView(avatarBox, new FrameLayout.LayoutParams(Ui.dp(this, 96), Ui.dp(this, 96)));
+        cam = Site.icon(this, "photo_camera", 20, 0xFFFFFFFF);
+        cam.setBackground(Site.round(Site.primary(this), Ui.dp(this, 18)));
         cam.setContentDescription("Загрузить фото"); cam.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
         cam.setOnClickListener(v -> pick.launch("image/*"));
-        FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40), Gravity.END | Gravity.BOTTOM);
-        cl.setMargins(0, 0, 0, Ui.dp(this, 2));
-        ab.addView(cam, cl);
-        head.addView(ab, new LinearLayout.LayoutParams(Ui.dp(this, 132), Ui.dp(this, 124)));
-        nameV = Site.label(this, "", 24, Site.text(this), true); nameV.setGravity(Gravity.CENTER); nameV.setPadding(Ui.dp(this, 16), Ui.dp(this, 14), Ui.dp(this, 16), 0);
-        head.addView(nameV, new LinearLayout.LayoutParams(-1, -2));
-        TextView st = Site.label(this, "в сети", 15, Site.primary(this), false); st.setGravity(Gravity.CENTER);
+        cam.setVisibility(View.GONE); // на сайте кнопка-камера видна в режиме редактирования
+        ab.addView(cam, new FrameLayout.LayoutParams(Ui.dp(this, 36), Ui.dp(this, 36), Gravity.END | Gravity.BOTTOM));
+        head.addView(ab, new LinearLayout.LayoutParams(Ui.dp(this, 96), Ui.dp(this, 96)));
+        nameV = Site.label(this, "", 22f, Site.text(this), 500); nameV.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-1, -2); nl.topMargin = Ui.dp(this, 12);
+        head.addView(nameV, nl);
+        TextView st = Site.label(this, "в сети", 14f, Site.primary(this), 400); st.setGravity(Gravity.CENTER);
         head.addView(st, new LinearLayout.LayoutParams(-1, -2));
         col.addView(head);
 
         LinearLayout g = Site.group(this, col, "Информация");
         LinearLayout r1 = Site.row(this, g, "alternate_email", "@", "Имя пользователя", null, null);
+        r1.setPadding(Ui.dp(this, 16), Ui.dp(this, 8), Ui.dp(this, 16), Ui.dp(this, 8));
         nickV = r1.findViewWithTag("label");
         LinearLayout r2 = Site.row(this, g, "info", "Не указано", "О себе", null, null);
+        r2.setPadding(Ui.dp(this, 16), Ui.dp(this, 8), Ui.dp(this, 16), Ui.dp(this, 8));
         bioV = r2.findViewWithTag("label");
         note = Site.hint(this, "");
         note.setVisibility(View.GONE);
@@ -96,20 +98,21 @@ public class ProfileActivity extends AppCompatActivity {
         col.addView(wrap);
         editCard = wrap;
         LinearLayout ec = Site.group(this, wrap, "Редактирование");
-        ec.setPadding(Ui.dp(this, 16), Ui.dp(this, 12), Ui.dp(this, 16), Ui.dp(this, 16));
-        name = Ui.input(this, "Имя");
+        ec.setPadding(Ui.dp(this, 16), 0, Ui.dp(this, 16), Ui.dp(this, 16));
+        ec.findViewWithTag("title").setPadding(0, Ui.dp(this, 16), 0, Ui.dp(this, 0));
+        name = Site.input(this, "");
         name.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(64)});
-        nick = Ui.input(this, "Никнейм");
+        nick = Site.input(this, "");
         nick.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(32)});
-        bio = Ui.input(this, "О себе");
+        bio = Site.input(this, "");
         bio.setSingleLine(false); bio.setMaxLines(5);
         bio.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(300)});
-        letterIn = Ui.input(this, "Буквы на аватаре (1–2 символа, пусто — первая буква имени)");
+        letterIn = Site.input(this, "");
         letterIn.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(2)});
         letterIn.setText(letter);
-        ec.addView(Ui.field(name), Ui.spaced(this));
-        ec.addView(Ui.field(nick), Ui.spaced(this));
-        ec.addView(Ui.field(bio), Ui.spaced(this));
+        ec.addView(Site.caption(this, "Имя")); ec.addView(name, new LinearLayout.LayoutParams(-1, -2));
+        ec.addView(Site.caption(this, "Никнейм")); ec.addView(nick, new LinearLayout.LayoutParams(-1, -2));
+        ec.addView(Site.caption(this, "О себе")); ec.addView(bio, new LinearLayout.LayoutParams(-1, -2));
         counter = Site.label(this, "0/300", 12, Site.text2(this), false); counter.setGravity(Gravity.END);
         ec.addView(counter, new LinearLayout.LayoutParams(-1, -2));
         bio.addTextChangedListener(new android.text.TextWatcher() {
@@ -117,8 +120,8 @@ public class ProfileActivity extends AppCompatActivity {
             public void onTextChanged(CharSequence a, int b1, int c, int d) { counter.setText(a.length() + "/300"); }
             public void afterTextChanged(android.text.Editable e) { }
         });
-        ec.addView(Ui.field(letterIn), Ui.spaced(this));
-        ec.addView(Site.label(this, "Цвет фона", 13, Site.text2(this), false), Ui.spaced(this));
+        ec.addView(Site.caption(this, "Буквы на аватаре (1–2 символа, пусто — первая буква имени)")); ec.addView(letterIn, new LinearLayout.LayoutParams(-1, -2));
+        ec.addView(Site.caption(this, "Цвет фона"));
         android.widget.GridLayout grid = new android.widget.GridLayout(this);
         grid.setColumnCount(6);
         for (int c0 : Avatars.PALETTE) {
@@ -136,20 +139,19 @@ public class ProfileActivity extends AppCompatActivity {
             grid.addView(sw, lp);
         }
         ec.addView(grid);
-        View rm = Ui.textButton(this, "Убрать фото");
+        View rm = Site.link(this, "Убрать фото");
         rm.setOnClickListener(v -> applyAuto(true));
         ec.addView(rm, Ui.spaced(this));
-        View save = Ui.button(this, "Сохранить");
+        View save = Site.button(this, "Сохранить");
         save.setOnClickListener(v -> save());
         ec.addView(save, Ui.spaced(this));
 
-        col.addView(Site.hint(this, "Имя, никнейм, «О себе» и аватар видны другим пользователям и не шифруются сквозным шифрованием. Сообщения и файлы шифруются всегда."));
         paintInfo(Avatars.merged(this, Api.get(this).uid()));
         drawAvatar();
         io.execute(this::load);
     }
 
-    private void toggleEdit() { editCard.setVisibility(editCard.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE); }
+    private void toggleEdit() { boolean on = editCard.getVisibility() != View.VISIBLE; editCard.setVisibility(on ? View.VISIBLE : View.GONE); cam.setVisibility(on ? View.VISIBLE : View.GONE); }
     private void paintSwatches() {
         for (View o : swatches) ((android.graphics.drawable.GradientDrawable) o.getBackground()).setStroke((Integer) o.getTag() == chosen ? Ui.dp(this, 3) : 0, Site.text(this));
     }
@@ -157,7 +159,7 @@ public class ProfileActivity extends AppCompatActivity {
         String un = p.optString("username", "");
         String dn = p.isNull("display_name") ? "" : p.optString("display_name", "");
         String bi = p.has("bio") && !p.isNull("bio") ? p.optString("bio") : Avatars.prefs(this).getString("bio", "");
-        nameV.setText(dn.isEmpty() ? un : dn);
+        nameV.setText(dn.isEmpty() ? "@" + un : dn);
         nickV.setText("@" + un);
         bioV.setText(bi.isEmpty() ? "Не указано" : bi);
         bioV.setTextColor(bi.isEmpty() ? Site.text2(this) : Site.text(this));
@@ -171,7 +173,7 @@ public class ProfileActivity extends AppCompatActivity {
         avatarBox.removeAllViews();
         String uid = Api.get(this).uid();
         String n = nameV == null ? "?" : nameV.getText().toString();
-        avatarBox.addView(Avatars.view(this, uid, n.isEmpty() ? "?" : n, 120), new FrameLayout.LayoutParams(-1, -1));
+        avatarBox.addView(Avatars.view(this, uid, n.isEmpty() ? "?" : n, 96), new FrameLayout.LayoutParams(-1, -1));
     }
 
     private void load() {

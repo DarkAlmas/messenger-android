@@ -36,6 +36,12 @@ final class Realtime extends WebSocketListener {
     }
 
     boolean isJoined() { return joined; }
+    /** broadcast-события канала chat-<id> (как на сайте: «typing» {u, stop?}). */
+    volatile java.util.function.BiConsumer<String, JSONObject> onBroadcast;
+    void broadcast(String event, JSONObject payload) {
+        WebSocket w = ws; if (w == null || !joined) return;
+        ex.execute(() -> { try { send(w, topic(), "broadcast", new JSONObject().put("type", "broadcast").put("event", event).put("payload", payload)); } catch (Exception ignored) { } });
+    }
 
     void start() { ex.execute(this::connect); }
 
@@ -64,7 +70,7 @@ final class Realtime extends WebSocketListener {
                             pc.put(o);
                         }
                         JSONObject cfg = new JSONObject().put("postgres_changes", pc)
-                                .put("broadcast", new JSONObject().put("self", false)).put("presence", new JSONObject().put("key", ""));
+                                .put("broadcast", new JSONObject().put("self", false)).put("private", true).put("presence", new JSONObject().put("key", ""));
                         send(w, topic(), "phx_join", new JSONObject().put("config", cfg).put("access_token", token));
                     } catch (Exception ignored) { }
                     if (hb != null) hb.cancel(false);
@@ -87,6 +93,9 @@ final class Realtime extends WebSocketListener {
                             }
                             if (onKeys != null && (table.equals("sender_key_distributions") || table.equals("group_key_epochs"))) onKeys.run();
                             onChange.run();
+                        } else if ("broadcast".equals(ev) && topic().equals(m.optString("topic"))) {
+                            JSONObject pl = m.optJSONObject("payload");
+                            if (pl != null && onBroadcast != null) onBroadcast.accept(pl.optString("event"), pl.optJSONObject("payload"));
                         } else if ("phx_error".equals(ev) || "phx_close".equals(ev)) {
                             joined = false;
                         }

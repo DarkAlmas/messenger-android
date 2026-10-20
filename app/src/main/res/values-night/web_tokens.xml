@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- СГЕНЕРИРОВАНО tools/tokens2res.py из web/tokens.css. Не править руками. -->
+<resources>
+    <color name="web_color_primary">#FF7B8BFF</color>
+    <color name="web_color_on_primary">#FFFFFFFF</color>
+    <color name="web_color_primary_container">#FF3346D3</color>
+    <color name="web_color_on_primary_container">#FFE3E6FF</color>
+    <color name="web_color_secondary">#FFC4C5DD</color>
+    <color name="web_color_secondary_container">#FF434659</color>
+    <color name="web_color_surface">#FF0F1117</color>
+    <color name="web_color_surface_lowest">#FF0A0C10</color>
+    <color name="web_color_surface_container">#FF171A22</color>
+    <color name="web_color_surface_high">#FF21252F</color>
+    <color name="web_color_surface_highest">#FF2B303B</color>
+    <color name="web_color_text">#FFE4E1EC</color>
+    <color name="web_color_text_secondary">#FFA3A5B8</color>
+    <color name="web_color_gray">#FF8E8E93</color>
+    <color name="web_color_divider">#12FFFFFF</color>
+    <color name="web_color_chat_bg">#FF0A0C10</color>
+    <color name="web_bubble_out_bg">#FF3346D3</color>
+    <color name="web_bubble_out_text">#FFFFFFFF</color>
+    <color name="web_bubble_out_meta">#B2FFFFFF</color>
+    <color name="web_bubble_in_bg">#FF21252F</color>
+    <color name="web_bubble_in_text">#FFE4E1EC</color>
+    <color name="web_bubble_in_meta">#FF8A8DA0</color>
+    <color name="web_color_link">#FF7B8BFF</color>
+    <color name="web_color_unread_badge">#FF7B8BFF</color>
+    <color name="web_color_muted_badge">#FF4A4E5C</color>
+    <color name="web_color_online">#FF5CC85A</color>
+    <color name="web_color_typing">#FF7B8BFF</color>
+    <color name="web_color_danger">#FFE53935</color>
+    <color name="web_color_warning">#FFE8A100</color>
+    <color name="web_color_pinned_bg">#FF171A22</color>
+    <color name="web_color_hover">#147B8BFF</color>
+    <color name="web_color_active_row">#FF3346D3</color>
+    <color name="web_avatar_1">#FF5C6BC0</color>
+    <color name="web_avatar_2">#FF26A69A</color>
+    <color name="web_avatar_3">#FFEF6C00</color>
+    <color name="web_avatar_4">#FFAB47BC</color>
+    <color name="web_avatar_5">#FF42A5F5</color>
+    <color name="web_avatar_6">#FFEC407A</color>
+    <color name="web_avatar_7">#FF7CB342</color>
+    <color name="web_avatar_8">#FF8D6E63</color>
+</resources>

@@ -179,6 +179,20 @@ public final class Api {
     }
 
     /** Вход строго по паролю: только такая сессия может одобрять QR. */
+    /** Edge Function без сессии (qr-create / qr-poll), как fn() на сайте: apikey + Bearer publishable key. */
+    public JSONObject fn(String name, JSONObject body) throws Exception {
+        String r = send(base(URL + "/functions/v1/" + name).header("Authorization", "Bearer " + KEY)
+                .post(RequestBody.create((body == null ? new JSONObject() : body).toString(), JSON)));
+        return r.trim().isEmpty() ? new JSONObject() : new JSONObject(r);
+    }
+    /** Сессия из QR-входа (sb.auth.setSession на сайте): uid и почта — из JWT. */
+    public void setSession(String access, String refresh) throws Exception {
+        String[] parts = access.split("\\.");
+        JSONObject claims = new JSONObject(new String(android.util.Base64.decode(parts[1], android.util.Base64.URL_SAFE | android.util.Base64.NO_WRAP | android.util.Base64.NO_PADDING), java.nio.charset.StandardCharsets.UTF_8));
+        save(new JSONObject().put("access_token", access).put("refresh_token", refresh)
+                .put("user", new JSONObject().put("id", claims.getString("sub")).put("email", claims.optString("email", ""))));
+    }
+
     public void signIn(String email, String password) throws Exception {
         JSONObject b = new JSONObject().put("email", email).put("password", password);
         String r = send(base(URL + "/auth/v1/token?grant_type=password").post(RequestBody.create(b.toString(), JSON)));

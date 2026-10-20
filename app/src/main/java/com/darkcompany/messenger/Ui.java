@@ -196,17 +196,22 @@ final class Ui {
         row.setPadding(dp(c, 16), dp(c, 10), dp(c, 16), dp(c, 10));
         row.setMinimumHeight(dp(c, 72));
         String seed = o.isNull("peer_id") ? id : o.optString("peer_id");
+        if (o.optBoolean("_archive")) { // .archive-row: значок archive / arrow_back на сером круге
+            TextView av = Site.icon(c, o.optString("_sub").startsWith("Назад") ? "arrow_back" : "archive", 24, Site.text2(c));
+            av.setBackground(Site.round(Site.container(c), dp(c, 26)));
+            row.addView(av, new LinearLayout.LayoutParams(dp(c, 52), dp(c, 52)));
+        } else
         row.addView(o.isNull("peer_id") ? Avatars.render(c, null, title, seed, 52, null) : Avatars.view(c, o.optString("peer_id"), title, 52),
                 new LinearLayout.LayoutParams(dp(c, 52), dp(c, 52)));
         LinearLayout col = new LinearLayout(c);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setPadding(dp(c, 14), 0, dp(c, 8), 0);
-        TextView t = text(c, title, 17);
-        t.setTypeface(Typeface.DEFAULT_BOLD);
+        TextView t = Site.label(c, title, 17f, Site.text(c), 700);
         t.setSingleLine(true);
         t.setEllipsize(android.text.TextUtils.TruncateAt.END);
         String last;
-        if (o.isNull("last_at")) last = "Нет сообщений";
+        if (o.optBoolean("_archive")) last = o.optString("_sub");
+        else if (o.isNull("last_at")) last = "Нет сообщений";
         else {
             String b = o.isNull("last_body") ? "" : o.optString("last_body", "");
             last = !o.optBoolean("last_has_file") && b.trim().isEmpty() && !o.isNull("last_at") ? "🔒 зашифрованное сообщение" :
@@ -216,8 +221,7 @@ final class Ui {
             else if (o.has("_preview") && !o.optString("_preview").isEmpty()) last = o.optString("_preview").replace('\n', ' ');
             if (me != null && me.equals(o.optString("last_sender"))) last = "Вы: " + last;
         }
-        TextView s = text(c, last, 14);
-        s.setTextColor(attr(c, com.google.android.material.R.attr.colorOnSurfaceVariant));
+        TextView s = Site.label(c, last, 14f, Site.text2(c), 400);
         s.setSingleLine(true);
         s.setEllipsize(android.text.TextUtils.TruncateAt.END);
         col.addView(t);
@@ -226,20 +230,23 @@ final class Ui {
         LinearLayout side = new LinearLayout(c);
         side.setOrientation(LinearLayout.VERTICAL);
         side.setGravity(Gravity.END);
-        TextView tm = text(c, o.isNull("last_at") ? "" : time(o.optString("last_at")), 12);
-        int primary = attr(c, androidx.appcompat.R.attr.colorPrimary);
-        tm.setTextColor(unread > 0 ? primary : attr(c, com.google.android.material.R.attr.colorOnSurfaceVariant));
+        int primary = Site.primary(c);
+        boolean muted = ChatsActivity.muted(o);
+        TextView tm = Site.label(c, o.isNull("last_at") ? "" : listTime(instant(o.optString("last_at")), System.currentTimeMillis()), 12f, unread > 0 && !muted ? primary : Site.text2(c), 400);
         side.addView(tm);
+        LinearLayout flags = new LinearLayout(c); flags.setGravity(Gravity.CENTER_VERTICAL);
+        if (muted) flags.addView(Site.icon(c, "notifications_off", 16, Site.text2(c)));
+        if (unread <= 0 && o.optBoolean("pinned")) flags.addView(Site.icon(c, "push_pin", 16, Site.text2(c)));
+        if (flags.getChildCount() > 0) { LinearLayout.LayoutParams fl = new LinearLayout.LayoutParams(-2, dp(c, 22)); fl.topMargin = dp(c, 4); fl.gravity = Gravity.END; side.addView(flags, fl); }
         if (unread > 0) {
-            TextView bd = text(c, unread > 99 ? "99+" : String.valueOf(unread), 12);
-            bd.setTypeface(Typeface.DEFAULT_BOLD);
+            TextView bd = Site.label(c, unread > 99 ? "99+" : String.valueOf(unread), 12f, 0xFFFFFFFF, 700);
             bd.setGravity(Gravity.CENTER);
             bd.setTextColor(attr(c, com.google.android.material.R.attr.colorOnPrimary));
             bd.setMinWidth(dp(c, 22));
-            bd.setPadding(dp(c, 6), dp(c, 2), dp(c, 6), dp(c, 2));
+            bd.setPadding(dp(c, 6), 0, dp(c, 6), 0);
             GradientDrawable g = new GradientDrawable();
             g.setCornerRadius(dp(c, 11));
-            g.setColor(primary);
+            g.setColor(muted || o.optBoolean("_archive") ? c.getColor(R.color.web_color_muted_badge) : primary);
             bd.setBackground(g);
             LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(-2, dp(c, 22));
             bl.topMargin = dp(c, 4);
@@ -335,6 +342,17 @@ final class Ui {
     }
 
     /** "2026-10-14T01:02:03.123+00:00" -> local "HH:mm" (or "dd.MM HH:mm" if not today). */
+    private static final String[] WD = {"вс", "пн", "вт", "ср", "чт", "пт", "сб"};
+    /** fmtListTime сайта: сегодня — ЧЧ:ММ, меньше 6 дней — «пн», иначе ДД.ММ(.ГГ). */
+    static String listTime(long t, long now) {
+        java.util.Calendar d = java.util.Calendar.getInstance(); d.setTimeInMillis(t);
+        java.util.Calendar n = java.util.Calendar.getInstance(); n.setTimeInMillis(now);
+        if (d.get(java.util.Calendar.YEAR) == n.get(java.util.Calendar.YEAR) && d.get(java.util.Calendar.DAY_OF_YEAR) == n.get(java.util.Calendar.DAY_OF_YEAR))
+            return String.format(java.util.Locale.ROOT, "%02d:%02d", d.get(java.util.Calendar.HOUR_OF_DAY), d.get(java.util.Calendar.MINUTE));
+        if (now - t < 6 * 86400000L) return WD[d.get(java.util.Calendar.DAY_OF_WEEK) - 1];
+        String s = String.format(java.util.Locale.ROOT, "%02d.%02d", d.get(java.util.Calendar.DAY_OF_MONTH), d.get(java.util.Calendar.MONTH) + 1);
+        return s + "." + String.format(java.util.Locale.ROOT, "%02d", d.get(java.util.Calendar.YEAR) % 100);
+    }
     static String time(String iso) {
         if (iso == null || iso.length() < 19) return "";
         try {
