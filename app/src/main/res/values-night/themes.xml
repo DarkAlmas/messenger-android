@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Messenger" parent="Theme.Material3.DayNight">
+        <item name="colorPrimary">#7B8BFF</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorPrimaryContainer">#3346D3</item>
+        <item name="colorOnPrimaryContainer">#E3E6FF</item>
+        <item name="colorSecondary">#C4C5DD</item>
+        <item name="colorSecondaryContainer">#434659</item>
+        <item name="colorSurface">#0F1117</item>
+        <item name="colorSurfaceContainerLowest">#0A0C10</item>
+        <item name="colorSurfaceContainer">#171A22</item>
+        <item name="colorSurfaceContainerHigh">#21252F</item>
+        <item name="colorSurfaceContainerHighest">#2B303B</item>
+        <item name="android:statusBarColor">#0F1117</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>
