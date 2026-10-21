@@ -377,7 +377,7 @@ public class ChatActivity extends AppCompatActivity {
         io.execute(() -> { try { Api.get(ChatActivity.this).rpc("touch_presence", new JSONObject()); } catch (Exception ignored) { } loadLastSeen(); });
         h.postDelayed(this, 60000);
     } };
-    @Override protected void onStop() { super.onStop(); if (chatId != null && chatId.equals(openChat)) openChat = null; if (recorder != null) recorder.cancel(); running = false; h.removeCallbacks(keyWatch); h.removeCallbacks(presence); h.removeCallbacks(poll); h.removeCallbacks(rtFetch); if (rt != null) { rt.stop(); rt = null; } }
+    @Override protected void onStop() { super.onStop(); CloudBackup.maybeAuto(this, true); if (chatId != null && chatId.equals(openChat)) openChat = null; if (recorder != null) recorder.cancel(); running = false; h.removeCallbacks(keyWatch); h.removeCallbacks(presence); h.removeCallbacks(poll); h.removeCallbacks(rtFetch); if (rt != null) { rt.stop(); rt = null; } }
 
     private static final String[] EMOJI = {"👍", "❤️", "😂", "😮", "😢", "🔥"};
     private volatile String lastSig = null;

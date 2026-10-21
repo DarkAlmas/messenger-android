@@ -18,8 +18,7 @@ import javax.crypto.spec.SecretKeySpec;
  * Резервная копия переписки — тот же шифр, что web/backup.js (docs/backup_format.md):
  * data = nonce(12) || AES-256-GCM(key, nonce, JSON, AAD="msgr-backup:v1:<uid>"),
  * key = Argon2id(UTF-8 пароль, salt, m=65536 KiB, t=3, p=1, v=0x13, 32 байта).
- * Файл на устройстве (docs/backup_format.md, «Файл копии»): JSON
- * {"format":"msgr-backup","v":1,"uid":..,"salt":b64,"kdf":{alg,m,t,p},"created_at":..,"data":b64(backup.bin)}.
+ * Хранится как на сайте: Storage backups/{uid}/backup.bin + строка key_backups (salt, kdf).
  * Ключей устройства и сессий в копии нет; пароль нигде не сохраняется.
  */
 final class BackupFile {
@@ -35,7 +34,9 @@ final class BackupFile {
     }
     static byte[] deriveKey(char[] pass, byte[] salt, JSONObject kdf) throws Exception {
         checkKdf(kdf);
-        byte[] pw = new String(pass).getBytes(StandardCharsets.UTF_8);
+        java.nio.ByteBuffer bb = StandardCharsets.UTF_8.newEncoder().encode(java.nio.CharBuffer.wrap(pass));
+        byte[] pw = new byte[bb.remaining()]; bb.get(pw);
+        if (bb.hasArray()) Arrays.fill(bb.array(), (byte) 0);
         try {
             Argon2Parameters prm = new Argon2Parameters.Builder(Argon2Parameters.ARGON2_id).withVersion(Argon2Parameters.ARGON2_VERSION_13)
                     .withIterations(kdf.getInt("t")).withMemoryAsKB(kdf.getInt("m")).withParallelism(kdf.getInt("p")).withSalt(salt).build();
@@ -72,32 +73,6 @@ final class BackupFile {
         return o;
     }
 
-    /** Полный файл копии. */
-    static byte[] export(JSONArray messages, char[] pass, String uid, String createdAt) throws Exception {
-        byte[] salt = new byte[16]; new SecureRandom().nextBytes(salt);
-        JSONObject kdf = defaultKdf();
-        byte[] key = deriveKey(pass, salt, kdf);
-        try {
-            byte[] bin = seal(new JSONObject().put("v", 1).put("uid", uid).put("created_at", createdAt).put("messages", messages), key, uid);
-            Base64.Encoder b = Base64.getEncoder();
-            return new JSONObject().put("format", "msgr-backup").put("v", 1).put("uid", uid).put("salt", b.encodeToString(salt))
-                    .put("kdf", kdf).put("created_at", createdAt).put("data", b.encodeToString(bin)).toString().getBytes(StandardCharsets.UTF_8);
-        } finally { Arrays.fill(key, (byte) 0); }
-    }
-    /** Разбор и расшифровка файла; ничего не записывает. */
-    static JSONObject read(byte[] file, char[] pass, String uid) throws Exception {
-        JSONObject f;
-        try { f = new JSONObject(new String(file, StandardCharsets.UTF_8)); } catch (Exception e) { throw new Exception("Это не файл резервной копии"); }
-        if (!"msgr-backup".equals(f.optString("format"))) throw new Exception("Это не файл резервной копии");
-        if (f.optInt("v") != 1) throw new Exception("Неподдерживаемая версия копии");
-        if (f.has("uid") && !uid.equals(f.optString("uid"))) throw new Exception("Копия принадлежит другому аккаунту");
-        Base64.Decoder d = Base64.getDecoder();
-        byte[] salt, bin;
-        try { salt = d.decode(f.getString("salt")); bin = d.decode(f.getString("data")); } catch (Exception e) { throw new Exception("Файл копии повреждён"); }
-        byte[] key = deriveKey(pass, salt, f.optJSONObject("kdf"));
-        try { return open(bin, key, uid); } finally { Arrays.fill(key, (byte) 0); }
-    }
-
     /** = Backup.toEntry сайта; pts — значение кэша «pts:<id>» ({"v":1,"t",f,caption,fw} или старый простой текст). */
     static JSONObject toEntry(JSONObject m, String pts) throws Exception {
         JSONObject pl = null;
@@ -120,11 +95,17 @@ final class BackupFile {
         return e;
     }
     /** = Backup.toCache сайта: {id, pt} или null. */
-    static String[] toCache(JSONObject e) throws Exception {
+    static String[] toCache(JSONObject e) throws Exception { return toCache(e, null); }
+    /** myMsgChat: message_id → chat_id сообщений моих чатов (с сервера); null — без проверки. Чужие id отбрасываются,
+     *  вложение — только если path начинается с chat/<chat_id>/ этого же сообщения. */
+    static String[] toCache(JSONObject e, java.util.Map<String, String> myMsgChat) throws Exception {
         if (e == null || !(e.opt("message_id") instanceof String)) return null;
+        String chat = myMsgChat == null ? e.optString("chat_id") : myMsgChat.get(e.getString("message_id"));
+        if (chat == null || (myMsgChat != null && !chat.equals(e.optString("chat_id")))) return null;
         JSONObject o = new JSONObject().put("v", 1).put("t", e.opt("plaintext") instanceof String ? e.getString("plaintext") : "");
         JSONArray at = e.optJSONArray("attachments");
         JSONObject a = at != null && at.length() > 0 ? at.optJSONObject(0) : null;
+        if (a != null && !a.optString("path").startsWith("chat/" + chat + "/")) a = null;
         if (a != null && !a.optString("path").isEmpty() && !a.optString("key").isEmpty() && !a.optString("nonce").isEmpty()) {
             JSONObject f = new JSONObject().put("p", a.getString("path")).put("n", a.optString("name", "file")).put("s", a.optLong("size", 0)).put("k", a.getString("key")).put("iv", a.getString("nonce"));
             if (!a.optString("mime").isEmpty()) f.put("m", a.getString("mime"));

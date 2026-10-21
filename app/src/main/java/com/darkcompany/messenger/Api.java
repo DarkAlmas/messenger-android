@@ -28,8 +28,10 @@ public final class Api {
     private final OkHttpClient http = new OkHttpClient();
     private final SharedPreferences sp;
 
+    private final Context app;
     private Api(Context c) {
-        sp = openPrefs(c.getApplicationContext());
+        app = c.getApplicationContext();
+        sp = openPrefs(app);
     }
 
     private static final String[] KEYS = {"access", "refresh", "uid"};
@@ -85,6 +87,7 @@ public final class Api {
     public void logout() {
         final String token = sp.getString("access", null);
         final String rt = sp.getString("refresh", null);
+        CloudBackup.wipe(app); // v16: обёрнутый ключ автокопии стирается при выходе
         if ((token == null || token.isEmpty()) && rt == null) { sp.edit().clear().commit(); return; }
         loggingOut = true; // сессия сразу считается закрытой для UI
         Runnable r = () -> {

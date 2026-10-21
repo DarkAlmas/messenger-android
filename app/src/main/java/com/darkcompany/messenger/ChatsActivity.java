@@ -49,7 +49,8 @@ public class ChatsActivity extends AppCompatActivity {
         if (!Api.get(this).hasSession()) { startActivity(new Intent(this, LoginActivity.class)); finish(); return; }
         io.execute(() -> ChatFiles.cleanup(this));
         keysIo.execute(() -> keysCheck(true)); // ключи E2E для этого устройства
-        io.execute(() -> NickDialog.checkAndShow(this)); // v11: вход через Google — имя пользователя ещё не выбрано
+        io.execute(() -> NickDialog.checkAndShow(this));
+        io.execute(this::offerRestore); // v16: копия найдена на новом устройстве // v11: вход через Google — имя пользователя ещё не выбрано
         ListView list = new ListView(this);
         adapter = new ArrayAdapter<String>(this, 0, titles) {
             @Override public android.view.View getView(int pos, android.view.View cv, android.view.ViewGroup parent) {
@@ -243,7 +244,7 @@ public class ChatsActivity extends AppCompatActivity {
     }
     @Override
     protected void onResume() {
-        super.onResume(); visible = true;
+        super.onResume(); visible = true; CloudBackup.maybeAuto(this, false);
         pendingAction();
         refreshMe();
         Updater.resume(this);
@@ -542,5 +543,37 @@ public class ChatsActivity extends AppCompatActivity {
             // уведомления показывает NotifyService (и в фоне, и при открытом списке) — здесь не дублируем
         }
         firstLoad = false;
+    }
+
+    /** v16: «Найдена копия от dd.MM…» — один раз на аккаунт на этом устройстве. */
+    private void offerRestore() {
+        String uid = Api.get(this).uid();
+        if (CloudBackup.sp(this).getBoolean("asked:" + uid, false)) return;
+        JSONObject row; try { row = CloudBackup.row(this); } catch (Exception e) { return; }
+        if (row == null) { CloudBackup.sp(this).edit().putBoolean("asked:" + uid, true).apply(); return; }
+        String day = new java.text.SimpleDateFormat("dd.MM", java.util.Locale.US).format(new java.util.Date(Ui.instant(row.optString("updated_at"))));
+        runOnUiThread(() -> {
+            if (isFinishing()) return;
+            android.widget.EditText p = Site.input(this, "Пароль копии");
+            p.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+            android.widget.TextView st = Site.label(this, "", 13f, Site.danger(this), 400);
+            android.widget.TextView go = Site.button(this, "Восстановить"), skip = Site.label(this, "Пропустить", 16f, Site.primary(this), 500);
+            skip.setGravity(android.view.Gravity.CENTER); skip.setMinHeight(Ui.dp(this, 46));
+            com.google.android.material.bottomsheet.BottomSheetDialog d = Site.sheet(this, "Резервная копия",
+                    Site.label(this, "Найдена копия от " + day + ". Введите пароль, чтобы вернуть переписку", 15f, Site.text(this), 400), p, st, go, skip,
+                    Site.label(this, SettingsActivity.CAPTION, 13f, Site.text2(this), 400));
+            skip.setOnClickListener(v -> { CloudBackup.sp(this).edit().putBoolean("asked:" + uid, true).apply(); d.dismiss(); });
+            go.setOnClickListener(v -> {
+                char[] pass = p.getText().toString().toCharArray(); p.setText("");
+                go.setEnabled(false); go.setText("Восстанавливаю…"); st.setText("");
+                io.execute(() -> {
+                    try { int n = CloudBackup.restore(this, pass); runOnUiThread(() -> { d.dismiss(); Ui.toast(this, "Восстановлено сообщений: " + n); }); }
+                    catch (BackupFile.BadPass e) { runOnUiThread(() -> { go.setEnabled(true); go.setText("Восстановить"); st.setText("Неверный пароль"); }); }
+                    catch (Exception e) { runOnUiThread(() -> { go.setEnabled(true); go.setText("Восстановить"); st.setText(e.getMessage()); }); }
+                    finally { java.util.Arrays.fill(pass, '\0'); }
+                });
+            });
+            d.show();
+        });
     }
 }

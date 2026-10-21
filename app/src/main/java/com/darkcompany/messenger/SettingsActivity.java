@@ -1,5 +1,6 @@
 package com.darkcompany.messenger;
 
+import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.view.Gravity;
@@ -114,7 +115,7 @@ public class SettingsActivity extends AppCompatActivity {
         Site.row(this, g, "mail", "Почта", null, mail.isEmpty() ? "—" : mail, v -> Site.sheet(this, "Почта", Site.kv(this, "Почта аккаунта", mail.isEmpty() ? "—" : mail),
                 Site.hint(this, "Почта используется для входа. Её видите только вы.")).show());
         rowStorage = Site.row(this, g, "storage", "Хранилище", null, "—", v -> storage());
-        rowBackup = Site.row(this, g, "backup", "Резервная копия", backupLine(), null, v -> backup());
+        rowBackup = Site.row(this, g, "backup", "Резервная копия", backupLine(this), null, v -> backup());
         Site.row(this, g, "language", "Язык", null, "Русский", v -> {
             android.widget.RadioButton rb = new android.widget.RadioButton(this); rb.setText("Русский"); rb.setChecked(true); rb.setTextSize(16); rb.setTextColor(Site.text(this));
             Site.sheet(this, "Язык", rb, Site.hint(this, "Другие языки пока недоступны.")).show();
@@ -320,29 +321,52 @@ public class SettingsActivity extends AppCompatActivity {
         return sb.toString();
     }
 
-    // ---------- Резервная копия (v15: файл на телефоне, формат docs/backup_format.md / web/backup.js) ----------
-    private static final int RQ_SAVE = 7101, RQ_OPEN = 7102;
-    private byte[] pendingFile; private com.google.android.material.bottomsheet.BottomSheetDialog bkSheet;
-    private String backupLine() {
-        android.content.SharedPreferences sp = getSharedPreferences("ui", 0);
-        long t = sp.getLong("bk_time", 0);
+    // ---------- Резервная копия (v16: как на сайте — key_backups + backups/{uid}/backup.bin) ----------
+    static final String CAPTION = "Копия зашифрована вашим паролем, без него её никто не прочитает";
+    static String backupLine(Context c) {
+        android.content.SharedPreferences sp = CloudBackup.sp(c);
+        long t = sp.getLong("last", 0);
         if (t == 0) return "Копий ещё нет";
-        return "Последняя копия: " + new java.text.SimpleDateFormat("dd.MM, HH:mm", new java.util.Locale("ru")).format(new java.util.Date(t)) + " · " + Ui.size(sp.getLong("bk_size", 0));
+        java.util.Calendar a = java.util.Calendar.getInstance(), b = java.util.Calendar.getInstance(); b.setTimeInMillis(t);
+        String day = a.get(java.util.Calendar.YEAR) == b.get(java.util.Calendar.YEAR) && a.get(java.util.Calendar.DAY_OF_YEAR) == b.get(java.util.Calendar.DAY_OF_YEAR) ? "сегодня"
+                : new java.text.SimpleDateFormat("dd.MM", java.util.Locale.US).format(new java.util.Date(t));
+        return "Последняя копия: " + day + ", " + new java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(new java.util.Date(t)) + " · " + Ui.size(sp.getLong("size", 0));
     }
-    private void loadBackup() { runOnUiThread(() -> { if (rowBackup != null) Site.setSub(rowBackup, backupLine()); }); }
+    private void loadBackup() {
+        try { // как сайт: время и размер — из key_backups
+            JSONObject r = CloudBackup.row(this);
+            if (r != null) CloudBackup.sp(this).edit().putLong("last", Ui.instant(r.optString("updated_at"))).putLong("size", r.optLong("size_bytes")).apply();
+            else CloudBackup.sp(this).edit().remove("last").remove("size").apply();
+        } catch (Exception ignored) { }
+        runOnUiThread(() -> { if (rowBackup != null) Site.setSub(rowBackup, backupLine(this)); });
+    }
     private void backup() {
-        TextView top = Site.label(this, backupLine(), 15f, Site.text(this), 400);
-        TextView create = Site.button(this, "Создать копию");
-        TextView restore = Site.label(this, "Восстановить из файла", 16f, Site.primary(this), 500);
-        restore.setGravity(Gravity.CENTER); restore.setMinHeight(Ui.dp(this, 46));
-        android.graphics.drawable.GradientDrawable ob = Site.round(0, Ui.dp(this, 26)); ob.setStroke(Math.max(1, Ui.dp(this, 1)), Site.primary(this)); restore.setBackground(ob);
-        TextView cap = Site.label(this, "Копия зашифрована паролем. Без пароля восстановить её нельзя", 13f, Site.text2(this), 400);
-        bkSheet = Site.sheet(this, "Резервная копия", top, create, restore, cap);
-        create.setOnClickListener(v -> { bkSheet.dismiss(); createDialog(); });
-        restore.setOnClickListener(v -> { bkSheet.dismiss();
-            Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
-            try { startActivityForResult(i, RQ_OPEN); } catch (Exception e) { android.widget.Toast.makeText(this, "Не удалось открыть выбор файла", android.widget.Toast.LENGTH_LONG).show(); } });
-        bkSheet.show();
+        TextView top = Site.label(this, backupLine(this), 15f, Site.text(this), 400);
+        com.google.android.material.materialswitch.MaterialSwitch sw = new com.google.android.material.materialswitch.MaterialSwitch(this);
+        sw.setText("Автокопия"); sw.setTextSize(16); sw.setTextColor(Site.text(this));
+        sw.setChecked(CloudBackup.enabled(this) && CloudBackup.hasKey(this));
+        TextView now = Site.button(this, "Сохранить сейчас");
+        TextView cap = Site.label(this, CAPTION, 13f, Site.text2(this), 400);
+        com.google.android.material.bottomsheet.BottomSheetDialog d = Site.sheet(this, "Резервная копия", top, sw, now, cap);
+        sw.setOnCheckedChangeListener((v, on) -> {
+            if (!on) { CloudBackup.setEnabled(this, false); return; }
+            if (CloudBackup.hasKey(this)) { CloudBackup.setEnabled(this, true); return; }
+            passDialog(true, ok -> { if (!ok) sw.setChecked(false); else top.setText(backupLine(this)); });
+        });
+        now.setOnClickListener(v -> {
+            if (!CloudBackup.hasKey(this)) { passDialog(false, ok -> top.setText(backupLine(this))); return; }
+            now.setEnabled(false); now.setText("Сохраняю…");
+            io.execute(() -> {
+                String err = null; boolean ok = false;
+                try { ok = CloudBackup.nowWithStoredKey(this); } catch (Exception e) { err = e.getMessage(); }
+                final boolean fok = ok; final String ferr = err;
+                runOnUiThread(() -> { now.setEnabled(true); now.setText("Сохранить сейчас");
+                    if (fok) { top.setText(backupLine(this)); Ui.toast(this, "Копия сохранена"); loadBackup(); }
+                    else if (ferr != null) Ui.toast(this, "Не удалось: " + ferr);
+                    else passDialog(false, x -> top.setText(backupLine(this))); });
+            });
+        });
+        d.show();
     }
     private android.widget.EditText passField(String hint) {
         android.widget.EditText e = Site.input(this, hint);
@@ -350,111 +374,36 @@ public class SettingsActivity extends AppCompatActivity {
         e.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
         return e;
     }
-    private static final String[] STR_L = {"Слишком короткий (минимум 12 символов)", "Слабый", "Средний", "Хороший", "Надёжный"};
-    private static final int[] STR_C = {0xFFE53935, 0xFFE53935, 0xFFFB8C00, 0xFF43A047, 0xFF2E7D32};
-    private void createDialog() {
+    /** Пароль копии → ключ Argon2id → копия на сервер. auto: включение автокопии — ключ сохраняется обёрнутым Keystore. */
+    private void passDialog(boolean auto, java.util.function.Consumer<Boolean> done) {
+        boolean[] fin = {false};
         android.widget.EditText p1 = passField("Пароль копии"), p2 = passField("Повторите пароль");
-        android.widget.ProgressBar bar = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal); bar.setMax(4);
-        TextView sl = Site.label(this, STR_L[0], 13f, Site.text2(this), 400);
         TextView st = Site.label(this, "", 13f, Site.danger(this), 400);
-        TextView go = Site.button(this, "Сохранить в…");
-        android.text.TextWatcher w = new android.text.TextWatcher() {
-            public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
-            public void onTextChanged(CharSequence s, int a, int b, int c) { }
-            public void afterTextChanged(android.text.Editable s) {
-                int k = BackupFile.strength(p1.getText().toString()); bar.setProgress(k == 0 && p1.length() > 0 ? 1 : k);
-                bar.setProgressTintList(android.content.res.ColorStateList.valueOf(STR_C[k])); sl.setText(STR_L[k]); st.setText("");
-            }
-        };
-        p1.addTextChangedListener(w); p2.addTextChangedListener(w);
-        com.google.android.material.bottomsheet.BottomSheetDialog d = Site.sheet(this, "Создать копию", Site.caption(this, "Пароль"), p1, bar, sl, p2, st, go,
-                Site.label(this, "Копия зашифрована паролем. Без пароля восстановить её нельзя", 13f, Site.text2(this), 400));
+        TextView go = Site.button(this, auto ? "Включить" : "Сохранить сейчас");
+        com.google.android.material.bottomsheet.BottomSheetDialog d = Site.sheet(this, auto ? "Автокопия" : "Резервная копия",
+                Site.caption(this, "Пароль (минимум " + BackupFile.MIN_PASS + " символов; если копия уже есть — тот же, что на сайте)"), p1, p2, st, go,
+                Site.label(this, CAPTION, 13f, Site.text2(this), 400));
+        d.setOnDismissListener(x -> { if (!fin[0]) done.accept(false); });
         go.setOnClickListener(v -> {
             String a = p1.getText().toString(), b = p2.getText().toString();
             if (a.length() < BackupFile.MIN_PASS) { st.setText("Минимум " + BackupFile.MIN_PASS + " символов"); return; }
             if (!a.equals(b)) { st.setText("Пароли не совпадают"); return; }
             char[] pass = a.toCharArray(); p1.setText(""); p2.setText("");
-            go.setEnabled(false); go.setText("Создаю копию…");
+            go.setEnabled(false); go.setText("Сохраняю…"); st.setText("");
             io.execute(() -> {
+                byte[] key = null;
                 try {
-                    JSONArray msgs = collectMessages(n -> runOnUiThread(() -> go.setText("Сообщений: " + n)));
-                    String now = java.time.Instant.now().toString();
-                    byte[] file = BackupFile.export(msgs, pass, Api.get(this).uid(), now);
-                    runOnUiThread(() -> {
-                        d.dismiss(); pendingFile = file;
-                        String name = "messenger-backup-" + new java.text.SimpleDateFormat("yyyy-MM-dd-HHmm", java.util.Locale.US).format(new java.util.Date()) + ".msgrbak";
-                        Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/octet-stream").putExtra(Intent.EXTRA_TITLE, name);
-                        try { startActivityForResult(i, RQ_SAVE); } catch (Exception e) { pendingFile = null; android.widget.Toast.makeText(this, "Не удалось открыть «Сохранить в…»", android.widget.Toast.LENGTH_LONG).show(); }
-                    });
-                } catch (Exception e) {
-                    runOnUiThread(() -> { go.setEnabled(true); go.setText("Сохранить в…"); st.setText("Не удалось создать копию: " + e.getMessage()); });
-                } finally { java.util.Arrays.fill(pass, '\0'); }
-            });
-        });
-        d.show();
-    }
-    /** collectMessages сайта: все сообщения моих чатов, у которых есть расшифрованный текст на этом устройстве. */
-    private JSONArray collectMessages(java.util.function.IntConsumer progress) throws Exception {
-        Api api = Api.get(this); E2eCore core = E2e.get(this);
-        JSONArray out = new JSONArray(); String before = null;
-        for (;;) {
-            JSONArray page = api.select("messages?select=id,chat_id,sender_id,created_at&order=created_at.desc&limit=1000" + (before == null ? "" : "&created_at=lt." + android.net.Uri.encode(before)));
-            for (int i = 0; i < page.length(); i++) {
-                JSONObject m = page.getJSONObject(i);
-                String pts = core.peekOwn(m.optString("id"));
-                if (pts != null) out.put(BackupFile.toEntry(m, pts));
-            }
-            progress.accept(out.length());
-            if (page.length() < 1000) break;
-            before = page.getJSONObject(page.length() - 1).optString("created_at");
-        }
-        return out;
-    }
-    @Override protected void onActivityResult(int rq, int rc, Intent data) {
-        super.onActivityResult(rq, rc, data);
-        if (rq == RQ_SAVE) {
-            byte[] f = pendingFile; pendingFile = null;
-            if (rc != RESULT_OK || data == null || data.getData() == null || f == null) return;
-            android.net.Uri u = data.getData();
-            io.execute(() -> {
-                try (java.io.OutputStream os = getContentResolver().openOutputStream(u, "wt")) {
-                    os.write(f);
-                    getSharedPreferences("ui", 0).edit().putLong("bk_time", System.currentTimeMillis()).putLong("bk_size", f.length).apply();
-                    runOnUiThread(() -> { android.widget.Toast.makeText(this, "Копия сохранена", android.widget.Toast.LENGTH_LONG).show(); loadBackup(); });
-                } catch (Exception e) { runOnUiThread(() -> android.widget.Toast.makeText(this, "Не удалось сохранить: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show()); }
-            });
-        } else if (rq == RQ_OPEN && rc == RESULT_OK && data != null && data.getData() != null) {
-            android.net.Uri u = data.getData();
-            io.execute(() -> {
-                try (java.io.InputStream is = getContentResolver().openInputStream(u)) {
-                    java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream(); byte[] buf = new byte[65536]; int n; long tot = 0;
-                    while ((n = is.read(buf)) > 0) { tot += n; if (tot > 200L * 1024 * 1024) throw new Exception("Файл слишком большой"); bo.write(buf, 0, n); }
-                    byte[] file = bo.toByteArray();
-                    runOnUiThread(() -> restoreDialog(file));
-                } catch (Exception e) { runOnUiThread(() -> android.widget.Toast.makeText(this, "Не удалось прочитать файл: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show()); }
-            });
-        }
-    }
-    private void restoreDialog(byte[] file) {
-        android.widget.EditText p1 = passField("Пароль копии");
-        TextView st = Site.label(this, "", 13f, Site.danger(this), 400);
-        TextView go = Site.button(this, "Восстановить");
-        com.google.android.material.bottomsheet.BottomSheetDialog d = Site.sheet(this, "Восстановить из файла", Site.caption(this, "Пароль"), p1, st, go);
-        go.setOnClickListener(v -> {
-            char[] pass = p1.getText().toString().toCharArray();
-            go.setEnabled(false); go.setText("Проверяю…"); st.setText("");
-            io.execute(() -> {
-                try {
-                    JSONObject o = BackupFile.read(file, pass, Api.get(this).uid()); // проверка целостности до любой записи
-                    JSONArray ms = o.getJSONArray("messages"); java.util.List<String[]> items = new java.util.ArrayList<>();
-                    for (int i = 0; i < ms.length(); i++) { String[] x = BackupFile.toCache(ms.optJSONObject(i)); if (x != null) items.add(x); }
-                    int n = E2e.get(this).importPlain(items);
-                    runOnUiThread(() -> { d.dismiss(); android.widget.Toast.makeText(this, "Восстановлено сообщений: " + n, android.widget.Toast.LENGTH_LONG).show(); });
+                    JSONObject row = CloudBackup.row(this);
+                    Object[] k = CloudBackup.derive(this, pass); key = (byte[]) k[0];
+                    if (row != null) CloudBackup.verify(this, row, key); // существующая копия: пароль должен подходить, иначе не перезаписываем
+                    CloudBackup.create(this, key, (String) k[1], (JSONObject) k[2], n -> runOnUiThread(() -> go.setText("Сообщений: " + n)));
+                    if (auto) CloudBackup.storeKey(this, key, (String) k[1], (JSONObject) k[2]);
+                    runOnUiThread(() -> { fin[0] = true; d.dismiss(); done.accept(true); Ui.toast(this, "Копия сохранена"); loadBackup(); });
                 } catch (BackupFile.BadPass e) {
-                    runOnUiThread(() -> { go.setEnabled(true); go.setText("Восстановить"); st.setText("Неверный пароль"); });
+                    runOnUiThread(() -> { go.setEnabled(true); go.setText(auto ? "Включить" : "Сохранить сейчас"); st.setText("Неверный пароль: на сервере уже есть копия с другим паролем"); });
                 } catch (Exception e) {
-                    runOnUiThread(() -> { go.setEnabled(true); go.setText("Восстановить"); st.setText(e.getMessage()); });
-                } finally { java.util.Arrays.fill(pass, '\0'); }
+                    runOnUiThread(() -> { go.setEnabled(true); go.setText(auto ? "Включить" : "Сохранить сейчас"); st.setText("Не удалось: " + e.getMessage()); });
+                } finally { java.util.Arrays.fill(pass, '\0'); if (key != null) java.util.Arrays.fill(key, (byte) 0); }
             });
         });
         d.show();

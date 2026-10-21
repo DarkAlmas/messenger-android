@@ -4,8 +4,8 @@
 
 Сборка: `gradle assembleDebug` (JDK 17, Android SDK 37). Релизы: тег `v<versionCode>` + APK во вложении.
 
-## Резервная копия (v15)
-Настройки → «Резервная копия»: «Создать копию» (пароль ≥ 12 символов дважды → системное «Сохранить в…») и «Восстановить из файла».
-Файл `.msgrbak` — JSON `{"format":"msgr-backup","v":1,"uid","salt","kdf":{"alg":"argon2id","m":65536,"t":3,"p":1},"created_at","data"}`,
-где `data` = base64 от `backup.bin` ровно как в `web/backup.js` (nonce‖AES-256-GCM, AAD `msgr-backup:v1:<uid>`, ключ Argon2id).
-На сервер не загружается; ключей устройства в копии нет. Совместимость с сайтом: `V15BackupTest` + `tools/backup-interop/*.js`.
+## Резервная копия (v16, как на сайте)
+Настройки → «Резервная копия»: «Автокопия» (раз в сутки и после выхода из чата), «Сохранить сейчас». Формат и хранение — docs/backup_format.md:
+Storage `backups/{uid}/backup.bin` + строка `key_backups` (salt, kdf); шифр = `web/backup.js` (Argon2id → AES-256-GCM, AAD `msgr-backup:v1:<uid>`).
+Пароль не хранится; для автокопии хранится только ключ Argon2id, обёрнутый ключом Android Keystore (StrongBox/TEE), стирается при выходе и выключении.
+Совместимость с сайтом: `V16BackupTest` + `tools/backup-interop/*.js`.
