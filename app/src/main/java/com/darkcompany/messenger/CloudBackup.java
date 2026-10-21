@@ -69,11 +69,20 @@ final class CloudBackup {
         Api api = Api.get(c); String uid = api.uid();
         JSONArray msgs = collect(c, progress);
         JSONObject row = fresh ? null : row(c);
+        byte[] bin0 = null;
         if (row != null) {
-            int old = BackupFile.open(download(c, row), key, uid).getJSONArray("messages").length();
-            if (old > msgs.length() && (smaller == null || !smaller.allow(old, msgs.length()))) return SKIPPED;
+            // v20: существующая копия должна открыться этим ключом (иначе BadPass — ничего не перезаписываем, автокопия тоже).
+            JSONArray oldMs = BackupFile.open(download(c, row), key, uid).getJSONArray("messages");
+            java.util.Set<String> now = new java.util.HashSet<>();
+            for (int i = 0; i < msgs.length(); i++) now.add(msgs.getJSONObject(i).optString("message_id"));
+            int missing = 0; for (int i = 0; i < oldMs.length(); i++) if (!now.contains(oldMs.optJSONObject(i) == null ? "" : oldMs.optJSONObject(i).optString("message_id"))) missing++;
+            bin0 = BackupFile.seal(new JSONObject().put("v", 1).put("uid", uid).put("created_at", java.time.Instant.now().toString()).put("messages", msgs), key, uid);
+            long oldSize = row.optLong("size_bytes", 0);
+            // «меньше»: в старой копии есть сообщения, которых нет в новой, их больше, или новая заметно меньше по размеру (как сайт: < 80%)
+            boolean smallerCopy = missing > 0 || oldMs.length() > msgs.length() || (oldSize > 0 && bin0.length < oldSize * 0.8);
+            if (smallerCopy && (smaller == null || !smaller.allow(Math.max(oldMs.length(), msgs.length() + missing), msgs.length()))) return SKIPPED;
         }
-        byte[] bin = BackupFile.seal(new JSONObject().put("v", 1).put("uid", uid).put("created_at", java.time.Instant.now().toString()).put("messages", msgs), key, uid);
+        byte[] bin = bin0 != null ? bin0 : BackupFile.seal(new JSONObject().put("v", 1).put("uid", uid).put("created_at", java.time.Instant.now().toString()).put("messages", msgs), key, uid);
         HttpURLConnection h = (HttpURLConnection) new URL(Api.URL + "/storage/v1/object/" + BUCKET + "/" + path(uid)).openConnection();
         h.setRequestMethod("POST"); h.setDoOutput(true);
         h.setRequestProperty("apikey", Api.KEY); h.setRequestProperty("Authorization", "Bearer " + api.freshToken());

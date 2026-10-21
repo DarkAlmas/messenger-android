@@ -362,6 +362,11 @@ public final class E2eCore {
         claimedAt.remove(user);
     }
 
+    /** v20: проверить свои другие устройства (TOFU); true — есть неподтверждённый свой ключ. */
+    public boolean ownPending() {
+        try { devicesFor(net.uid()); } catch (KeyChangeException e) { return true; } catch (Exception ignored) { }
+        return hasPendingChange(net.uid());
+    }
     /** Можно ли шифровать этот чат: наши ключи опубликованы и у собеседника есть хотя бы одно устройство с ключами. */
     public boolean peerHasKeys(String peer) throws Exception {
         try { return !devicesFor(peer).isEmpty(); }

@@ -800,7 +800,7 @@ public class ChatActivity extends AppCompatActivity {
                 lastSig = null; fetch();
             } catch (Exception e) {
                 boolean net = !online || e instanceof java.io.IOException && !(e instanceof Api.HttpError);
-                if (!net) { try { j.put("failed", true); } catch (Exception ignored) { } if (!E2e.rebindBlocked && !(peerId != null && E2e.get(this).hasPendingChange(peerId))) toast(Ui.err(e)); } // v18: при «не удалось подключить» — только ⚠ у сообщения и баннер
+                if (!net) { try { j.put("failed", true); } catch (Exception ignored) { } if (!E2e.rebindBlocked && pendingUser() == null) toast(Ui.err(e)); } // v18: при «не удалось подключить» — только ⚠ у сообщения и баннер
                 saveOutbox();
                 lastSig = null; runOnUiThread(this::fetchOrRender);
                 if (e instanceof Api.AuthException) finish();
@@ -1095,7 +1095,7 @@ public class ChatActivity extends AppCompatActivity {
             try { ct = c.encrypt(peerId, payload.toString()); }
             catch (E2eCore.KeyChangeException k) {
                 runOnUiThread(this::updateBanner);
-                throw new Exception("Ключ безопасности изменился. Сообщение НЕ отправлено: сверьте код безопасности и примите новый ключ.");
+                throw new Exception("Сообщение не отправлено: ключ безопасности изменился, нажмите «Сверить» вверху чата.");
             }
             if (ct == null) {
                 e2e = false; runOnUiThread(this::updateBanner);
@@ -1170,7 +1170,7 @@ public class ChatActivity extends AppCompatActivity {
         E2eCore c = E2e.get(this);
         JSONObject ct;
         try { ct = c.encrypt(peerId, payload.toString()); }
-        catch (E2eCore.KeyChangeException k) { runOnUiThread(this::updateBanner); throw new Exception("Ключ безопасности изменился. Правка НЕ отправлена: сверьте код безопасности."); }
+        catch (E2eCore.KeyChangeException k) { runOnUiThread(this::updateBanner); throw new Exception("Правка не отправлена: ключ безопасности изменился, нажмите «Сверить» вверху чата."); }
         if (ct == null) throw new Exception("У собеседника нет ключей шифрования. Правка не отправлена.");
         editRpc(id, ct, null, null);
         c.rememberOwn(id, payload.toString());
@@ -1207,7 +1207,7 @@ public class ChatActivity extends AppCompatActivity {
                 boolean self = E2e.tryReady(this);
                 selfFail = !self;
                 peerErr = null;
-                try { if (self) ok = E2e.get(this).peerHasKeys(peerId); }
+                try { if (self) { ok = E2e.get(this).peerHasKeys(peerId); E2e.get(this).ownPending(); } } // v20: и свои устройства — иначе смена своего ключа видна только при отправке
                 catch (Exception ex) { peerErr = Ui.err(ex); } // сеть/сервер — это не «нет ключей»
             } else if (isGroup()) {
                 ok = E2e.tryReady(this); // в группе нужны только свои ключи; участникам без ключей SKDM не уйдёт
@@ -1224,14 +1224,26 @@ public class ChatActivity extends AppCompatActivity {
     private void retryRebind() {
         new Thread(() -> { E2e.ensureFresh(this, true); checkE2e(); runOnUiThread(() -> { if (fixBtn != null) { fixBtn.setEnabled(true); fixBtn.setText("Исправить"); } }); }, "rebind-retry").start();
     }
+    /** v20: чей ключ ждёт подтверждения — собеседника или МОЙ (новое своё устройство: encrypt шифрует и своим устройствам). */
+    private String pendingUser() {
+        if (peerId == null) return null;
+        E2eCore c = E2e.get(this);
+        if (c.hasPendingChange(peerId)) return peerId;
+        String me = Api.get(this).uid();
+        return c.hasPendingChange(me) ? me : null;
+    }
+    private String pendingTitle() {
+        String u = pendingUser();
+        return u != null && u.equals(Api.get(this).uid()) ? "Ключ вашего устройства изменился" : "Ключ " + peerName(peerId) + " изменился";
+    }
     private void updateBanner() {
         if (banner == null) return;
         boolean rb = e2eChecked && !e2e && selfFail && E2e.rebindBlocked && ("direct".equals(kind) || isGroup());
         // v19: ключ собеседника изменился — одна строка + «Сверить» (экран кода с «Принять новый ключ»); отправка заблокирована до принятия
-        keyMode = !rb && "direct".equals(kind) && e2eChecked && e2e && peerId != null && E2e.get(this).hasPendingChange(peerId);
+        keyMode = !rb && "direct".equals(kind) && e2eChecked && e2e && pendingUser() != null;
         if (fixBtn != null) { fixBtn.setVisibility(rb || keyMode ? android.view.View.VISIBLE : android.view.View.GONE); if (fixBtn.isEnabled()) fixBtn.setText(keyMode ? "Сверить" : "Исправить"); }
         if (rb || keyMode) {
-            banner.setText(keyMode ? "Ключ " + peerName(peerId) + " изменился" : "Не удалось подключить это устройство"); banner.setSingleLine(true); banner.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            banner.setText(keyMode ? pendingTitle() : "Не удалось подключить это устройство"); banner.setSingleLine(true); banner.setEllipsize(android.text.TextUtils.TruncateAt.END);
             banner.setTextColor(0xFFFFD27A); banner.setBackgroundColor(0xFF3A3220); if (bannerRow != null) bannerRow.setBackgroundColor(0xFF3A3220);
             return;
         }
@@ -1245,7 +1257,7 @@ public class ChatActivity extends AppCompatActivity {
             else { t = "🔒 Групповое сквозное шифрование (Sender Keys)"; bg = 0xFFC8E6C9; fg = 0xFF1B5E20; }
         } else if (!"direct".equals(kind)) { t = "Чат без сквозного шифрования"; bg = 0xFFECEFF1; fg = 0xFF37474F; }
         else if (!e2eChecked) { t = "Проверяю сквозное шифрование…"; bg = 0xFFECEFF1; fg = 0xFF37474F; }
-        else if (e2e && E2e.get(this).hasPendingChange(peerId)) {
+        else if (e2e && pendingUser() != null) {
             t = "⚠ Ключ безопасности собеседника изменился (новое устройство или переустановка). Отправка заблокирована. Нажмите, чтобы сверить код и принять.";
             bg = 0xFFFFCDD2; fg = 0xFFB71C1C;
         } else if (e2e) {
@@ -1279,7 +1291,9 @@ public class ChatActivity extends AppCompatActivity {
     private void showSafety() {
         new Thread(() -> {
             try {
-                final java.util.List<String[]> nums = E2e.get(this).safetyNumbers(peerId);
+                final String pu = pendingUser(); final boolean own = pu != null && !pu.equals(peerId);
+                final String su = own ? pu : peerId;
+                final java.util.List<String[]> nums = E2e.get(this).safetyNumbers(su);
                 runOnUiThread(() -> {
                     LinearLayout col = Ui.column(this);
                     col.setPadding(Ui.dp(this, 24), Ui.dp(this, 8), Ui.dp(this, 24), 0);
@@ -1304,13 +1318,15 @@ public class ChatActivity extends AppCompatActivity {
                     }
                     if (nums.isEmpty()) col.addView(Ui.text(this, "Нет ключей собеседника.", 14));
                     ScrollView sv = new ScrollView(this); sv.addView(col);
-                    boolean pend = E2e.get(this).hasPendingChange(peerId);
-                    if (pend) col.addView(Ui.text(this, "Ключ " + peerName(peerId) + " изменился — обычно это новый телефон или переустановка приложения. Сверьте код или спросите собеседника, затем примите новый ключ. До этого сообщения не отправляются.", 14), 1);
+                    boolean pend = pu != null;
+                    if (pend) col.addView(Ui.text(this, own
+                            ? "В вашем аккаунте появилось новое устройство или изменился ключ (вход на сайте, переустановка, перенос ключей). Если это вы — примите ключ. Если вы нигде не входили — не принимайте и смените пароль. До этого сообщения не отправляются."
+                            : "Ключ " + peerName(peerId) + " изменился — обычно это новый телефон или переустановка приложения. Сверьте код или спросите собеседника, затем примите новый ключ. До этого сообщения не отправляются.", 14), 1);
                     androidx.appcompat.app.AlertDialog[] dlg = new androidx.appcompat.app.AlertDialog[1];
                     if (pend) { // v19: явная большая кнопка — раньше была только малозаметная нейтральная
                         TextView acc = Site.button(this, "Принять новый ключ");
                         LinearLayout.LayoutParams al = new LinearLayout.LayoutParams(-1, -2); al.topMargin = Ui.dp(this, 16); al.bottomMargin = Ui.dp(this, 8);
-                        acc.setOnClickListener(v -> { if (dlg[0] != null) dlg[0].dismiss(); confirmAccept(); });
+                        acc.setOnClickListener(v -> { if (dlg[0] != null) dlg[0].dismiss(); confirmAccept(su); });
                         col.addView(acc, al);
                     }
                     com.google.android.material.dialog.MaterialAlertDialogBuilder bd = new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
@@ -1329,11 +1345,12 @@ public class ChatActivity extends AppCompatActivity {
         }, "safety").start();
     }
 
-    private void confirmAccept() {
+    private void confirmAccept() { confirmAccept(pendingUser() != null ? pendingUser() : peerId); }
+    private void confirmAccept(String user) {
         new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
                 .setTitle("Принять новый ключ?")
                 .setMessage("Делайте это, только если собеседник подтвердил, что сменил телефон или переустановил приложение. Надёжнее — сначала сверить QR.")
-                .setPositiveButton("Принять", (d, w) -> { E2e.get(this).acceptKeys(peerId); updateBanner(); retryFailed(); })
+                .setPositiveButton("Принять", (d, w) -> { E2e.get(this).acceptKeys(user); E2e.get(this).forgetClaims(user); updateBanner(); retryFailed(); })
                 .setNegativeButton("Отмена", null).show();
     }
 
