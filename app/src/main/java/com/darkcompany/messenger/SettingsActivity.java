@@ -94,13 +94,13 @@ public class SettingsActivity extends AppCompatActivity {
             Notify.setEnabled(this, on);
             if (on && !Notify.allowed(this)) requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 7);
             bt.invalidate();
-            Ui.toast(this, on ? "Уведомления включены" : "Уведомления выключены");
+            android.widget.Toast.makeText(this, on ? "Уведомления включены" : "Уведомления выключены", android.widget.Toast.LENGTH_LONG).show();
         });
         LinearLayout.LayoutParams swl = new LinearLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 32)); swl.leftMargin = Ui.dp(this, 16);
         nr.addView(sw, swl);
         nr.setOnClickListener(v -> sw.toggle());
         rowSound = Site.row(this, g, "volume_up", "Звук", null, Notify.soundLabel(this), v -> {
-            try { startActivity(Notify.soundSettings(this)); } catch (Exception e) { Ui.toast(this, "Не удалось открыть настройки звука"); } });
+            try { startActivity(Notify.soundSettings(this)); } catch (Exception e) { android.widget.Toast.makeText(this, "Не удалось открыть настройки звука", android.widget.Toast.LENGTH_LONG).show(); } });
         LinearLayout tr = Site.row(this, g, "visibility_off", "Показывать текст", null, null, null);
         android.widget.CompoundButton tsw = Site.toggle(this, Notify.showText(this));
         tsw.setOnCheckedChangeListener((bt, on) -> { Notify.setShowText(this, on); bt.invalidate(); });
@@ -114,7 +114,7 @@ public class SettingsActivity extends AppCompatActivity {
         Site.row(this, g, "mail", "Почта", null, mail.isEmpty() ? "—" : mail, v -> Site.sheet(this, "Почта", Site.kv(this, "Почта аккаунта", mail.isEmpty() ? "—" : mail),
                 Site.hint(this, "Почта используется для входа. Её видите только вы.")).show());
         rowStorage = Site.row(this, g, "storage", "Хранилище", null, "—", v -> storage());
-        rowBackup = Site.row(this, g, "backup", "Резервная копия", getSharedPreferences("ui", 0).getString("backup_val", "не создана"), null, v -> backup());
+        rowBackup = Site.row(this, g, "backup", "Резервная копия", backupLine(), null, v -> backup());
         Site.row(this, g, "language", "Язык", null, "Русский", v -> {
             android.widget.RadioButton rb = new android.widget.RadioButton(this); rb.setText("Русский"); rb.setChecked(true); rb.setTextSize(16); rb.setTextColor(Site.text(this));
             Site.sheet(this, "Язык", rb, Site.hint(this, "Другие языки пока недоступны.")).show();
@@ -165,8 +165,8 @@ public class SettingsActivity extends AppCompatActivity {
                 Api.get(this).update("profiles?id=eq." + Api.get(this).uid(), new JSONObject().put("last_seen_visibility", SEEN_V[i]));
                 getSharedPreferences("ui", 0).edit().putString("seen", SEEN_V[i]).apply();
                 runOnUiThread(() -> { paintSeenBox(); Site.setValue(rowSeen, SEEN_L[i]); });
-                Ui.toast(this, "Сохранено");
-            } catch (Exception e) { Ui.toast(this, "Не сохранено: " + Ui.err(e)); }
+                android.widget.Toast.makeText(this, "Сохранено", android.widget.Toast.LENGTH_LONG).show();
+            } catch (Exception e) { android.widget.Toast.makeText(this, "Не сохранено: " + Ui.err(e), android.widget.Toast.LENGTH_LONG).show(); }
         })));
         TextView bh = Site.label(this, "Заблокированные", 13, Site.text2(this), false);
         bh.setPadding(Ui.dp(this, 20), Ui.dp(this, 4), Ui.dp(this, 20), 0);
@@ -249,7 +249,7 @@ public class SettingsActivity extends AppCompatActivity {
             try {
                 JSONArray d = new JSONArray(Api.get(this).rpc("list_devices", new JSONObject()));
                 runOnUiThread(() -> showDevices(d));
-            } catch (Exception e) { Ui.toast(this, "Не удалось загрузить устройства: " + Ui.err(e)); }
+            } catch (Exception e) { android.widget.Toast.makeText(this, "Не удалось загрузить устройства: " + Ui.err(e), android.widget.Toast.LENGTH_LONG).show(); }
         });
     }
     private void showDevices(JSONArray d) {
@@ -267,7 +267,7 @@ public class SettingsActivity extends AppCompatActivity {
             LinearLayout all = Site.row(this, g, "logout", "Завершить все другие сеансы", null, null, v -> confirm("Завершить все другие сеансы (" + others.size() + ")? Их ключи будут удалены. Восстановить их будет нельзя.", () -> {
                 int fail = 0;
                 for (JSONObject o : others) { try { Api.get(this).rpc("revoke_device", new JSONObject().put("p_session_id", o.optString("id"))); } catch (Exception e) { fail++; } }
-                Ui.toast(this, fail > 0 ? "Не удалось завершить " + fail + " из " + others.size() : "Сеансы завершены");
+                android.widget.Toast.makeText(this, fail > 0 ? "Не удалось завершить " + fail + " из " + others.size() : "Сеансы завершены", android.widget.Toast.LENGTH_LONG).show();
                 runOnUiThread(() -> { if (dlg[0] != null) dlg[0].dismiss(); }); loadDevCount();
             }));
             danger(all);
@@ -291,8 +291,8 @@ public class SettingsActivity extends AppCompatActivity {
                     try {
                         Api.get(this).rpc("revoke_device", new JSONObject().put("p_session_id", d.optString("id")));
                         runOnUiThread(() -> { if (parent[0] != null) parent[0].dismiss(); if (d.optBoolean("is_current")) ChatsActivity.logout(this); });
-                        Ui.toast(this, "Сеанс завершён"); loadDevCount();
-                    } catch (Exception e) { Ui.toast(this, "Не удалось завершить сеанс: " + Ui.err(e)); }
+                        android.widget.Toast.makeText(this, "Сеанс завершён", android.widget.Toast.LENGTH_LONG).show(); loadDevCount();
+                    } catch (Exception e) { android.widget.Toast.makeText(this, "Не удалось завершить сеанс: " + Ui.err(e), android.widget.Toast.LENGTH_LONG).show(); }
                 })).show();
     }
     private void confirm(String text, Runnable bg) { confirmRed(text, "Завершить", bg); }
@@ -320,24 +320,144 @@ public class SettingsActivity extends AppCompatActivity {
         return sb.toString();
     }
 
-    // ---------- Резервная копия (key_backups) ----------
-    private void loadBackup() {
-        try {
-            JSONArray r = Api.get(this).select("key_backups?select=updated_at,size_bytes&user_id=eq." + Api.get(this).uid());
-            String v = r.length() == 0 ? "не создана" : new java.text.SimpleDateFormat("d MMM yyyy", new java.util.Locale("ru")).format(new java.util.Date(Ui.instant(r.getJSONObject(0).optString("updated_at"))));
-            getSharedPreferences("ui", 0).edit().putString("backup_val", v).putString("backup_sub", r.length() == 0 ? "" : Ui.size(r.getJSONObject(0).optLong("size_bytes"))).apply();
-            runOnUiThread(() -> Site.setSub(rowBackup, v));
-        } catch (Exception ignored) { }
+    // ---------- Резервная копия (v15: файл на телефоне, формат docs/backup_format.md / web/backup.js) ----------
+    private static final int RQ_SAVE = 7101, RQ_OPEN = 7102;
+    private byte[] pendingFile; private com.google.android.material.bottomsheet.BottomSheetDialog bkSheet;
+    private String backupLine() {
+        android.content.SharedPreferences sp = getSharedPreferences("ui", 0);
+        long t = sp.getLong("bk_time", 0);
+        if (t == 0) return "Копий ещё нет";
+        return "Последняя копия: " + new java.text.SimpleDateFormat("dd.MM, HH:mm", new java.util.Locale("ru")).format(new java.util.Date(t)) + " · " + Ui.size(sp.getLong("bk_size", 0));
     }
+    private void loadBackup() { runOnUiThread(() -> { if (rowBackup != null) Site.setSub(rowBackup, backupLine()); }); }
     private void backup() {
-        String v = getSharedPreferences("ui", 0).getString("backup_val", "не создана");
-        String sz = getSharedPreferences("ui", 0).getString("backup_sub", "");
-        TextView open = Site.label(this, "Открыть сайт", 15f, 0xFFFFFFFF, 500);
-        open.setGravity(Gravity.CENTER); open.setBackground(Site.round(Site.primary(this), Ui.dp(this, 26)));
-        open.setMinHeight(Ui.dp(this, 46));
-        open.setOnClickListener(x -> { try { startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://darkalmas.github.io/messenger-web/"))); } catch (Exception ignored) { } });
-        Site.sheet(this, "Резервная копия", Site.kv(this, "Последняя копия", "не создана".equals(v) ? "не создана" : v + (sz.isEmpty() ? "" : " · " + sz)),
-                Site.hint(this, "Копия шифруется паролем на устройстве (Argon2), сервер не может её прочитать. Создать или восстановить копию пока можно на сайте: Настройки → Резервная копия."), open).show();
+        TextView top = Site.label(this, backupLine(), 15f, Site.text(this), 400);
+        TextView create = Site.button(this, "Создать копию");
+        TextView restore = Site.label(this, "Восстановить из файла", 16f, Site.primary(this), 500);
+        restore.setGravity(Gravity.CENTER); restore.setMinHeight(Ui.dp(this, 46));
+        android.graphics.drawable.GradientDrawable ob = Site.round(0, Ui.dp(this, 26)); ob.setStroke(Math.max(1, Ui.dp(this, 1)), Site.primary(this)); restore.setBackground(ob);
+        TextView cap = Site.label(this, "Копия зашифрована паролем. Без пароля восстановить её нельзя", 13f, Site.text2(this), 400);
+        bkSheet = Site.sheet(this, "Резервная копия", top, create, restore, cap);
+        create.setOnClickListener(v -> { bkSheet.dismiss(); createDialog(); });
+        restore.setOnClickListener(v -> { bkSheet.dismiss();
+            Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
+            try { startActivityForResult(i, RQ_OPEN); } catch (Exception e) { android.widget.Toast.makeText(this, "Не удалось открыть выбор файла", android.widget.Toast.LENGTH_LONG).show(); } });
+        bkSheet.show();
+    }
+    private android.widget.EditText passField(String hint) {
+        android.widget.EditText e = Site.input(this, hint);
+        e.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        e.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
+        return e;
+    }
+    private static final String[] STR_L = {"Слишком короткий (минимум 12 символов)", "Слабый", "Средний", "Хороший", "Надёжный"};
+    private static final int[] STR_C = {0xFFE53935, 0xFFE53935, 0xFFFB8C00, 0xFF43A047, 0xFF2E7D32};
+    private void createDialog() {
+        android.widget.EditText p1 = passField("Пароль копии"), p2 = passField("Повторите пароль");
+        android.widget.ProgressBar bar = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal); bar.setMax(4);
+        TextView sl = Site.label(this, STR_L[0], 13f, Site.text2(this), 400);
+        TextView st = Site.label(this, "", 13f, Site.danger(this), 400);
+        TextView go = Site.button(this, "Сохранить в…");
+        android.text.TextWatcher w = new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
+            public void onTextChanged(CharSequence s, int a, int b, int c) { }
+            public void afterTextChanged(android.text.Editable s) {
+                int k = BackupFile.strength(p1.getText().toString()); bar.setProgress(k == 0 && p1.length() > 0 ? 1 : k);
+                bar.setProgressTintList(android.content.res.ColorStateList.valueOf(STR_C[k])); sl.setText(STR_L[k]); st.setText("");
+            }
+        };
+        p1.addTextChangedListener(w); p2.addTextChangedListener(w);
+        com.google.android.material.bottomsheet.BottomSheetDialog d = Site.sheet(this, "Создать копию", Site.caption(this, "Пароль"), p1, bar, sl, p2, st, go,
+                Site.label(this, "Копия зашифрована паролем. Без пароля восстановить её нельзя", 13f, Site.text2(this), 400));
+        go.setOnClickListener(v -> {
+            String a = p1.getText().toString(), b = p2.getText().toString();
+            if (a.length() < BackupFile.MIN_PASS) { st.setText("Минимум " + BackupFile.MIN_PASS + " символов"); return; }
+            if (!a.equals(b)) { st.setText("Пароли не совпадают"); return; }
+            char[] pass = a.toCharArray(); p1.setText(""); p2.setText("");
+            go.setEnabled(false); go.setText("Создаю копию…");
+            io.execute(() -> {
+                try {
+                    JSONArray msgs = collectMessages(n -> runOnUiThread(() -> go.setText("Сообщений: " + n)));
+                    String now = java.time.Instant.now().toString();
+                    byte[] file = BackupFile.export(msgs, pass, Api.get(this).uid(), now);
+                    runOnUiThread(() -> {
+                        d.dismiss(); pendingFile = file;
+                        String name = "messenger-backup-" + new java.text.SimpleDateFormat("yyyy-MM-dd-HHmm", java.util.Locale.US).format(new java.util.Date()) + ".msgrbak";
+                        Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/octet-stream").putExtra(Intent.EXTRA_TITLE, name);
+                        try { startActivityForResult(i, RQ_SAVE); } catch (Exception e) { pendingFile = null; android.widget.Toast.makeText(this, "Не удалось открыть «Сохранить в…»", android.widget.Toast.LENGTH_LONG).show(); }
+                    });
+                } catch (Exception e) {
+                    runOnUiThread(() -> { go.setEnabled(true); go.setText("Сохранить в…"); st.setText("Не удалось создать копию: " + e.getMessage()); });
+                } finally { java.util.Arrays.fill(pass, '\0'); }
+            });
+        });
+        d.show();
+    }
+    /** collectMessages сайта: все сообщения моих чатов, у которых есть расшифрованный текст на этом устройстве. */
+    private JSONArray collectMessages(java.util.function.IntConsumer progress) throws Exception {
+        Api api = Api.get(this); E2eCore core = E2e.get(this);
+        JSONArray out = new JSONArray(); String before = null;
+        for (;;) {
+            JSONArray page = api.select("messages?select=id,chat_id,sender_id,created_at&order=created_at.desc&limit=1000" + (before == null ? "" : "&created_at=lt." + android.net.Uri.encode(before)));
+            for (int i = 0; i < page.length(); i++) {
+                JSONObject m = page.getJSONObject(i);
+                String pts = core.peekOwn(m.optString("id"));
+                if (pts != null) out.put(BackupFile.toEntry(m, pts));
+            }
+            progress.accept(out.length());
+            if (page.length() < 1000) break;
+            before = page.getJSONObject(page.length() - 1).optString("created_at");
+        }
+        return out;
+    }
+    @Override protected void onActivityResult(int rq, int rc, Intent data) {
+        super.onActivityResult(rq, rc, data);
+        if (rq == RQ_SAVE) {
+            byte[] f = pendingFile; pendingFile = null;
+            if (rc != RESULT_OK || data == null || data.getData() == null || f == null) return;
+            android.net.Uri u = data.getData();
+            io.execute(() -> {
+                try (java.io.OutputStream os = getContentResolver().openOutputStream(u, "wt")) {
+                    os.write(f);
+                    getSharedPreferences("ui", 0).edit().putLong("bk_time", System.currentTimeMillis()).putLong("bk_size", f.length).apply();
+                    runOnUiThread(() -> { android.widget.Toast.makeText(this, "Копия сохранена", android.widget.Toast.LENGTH_LONG).show(); loadBackup(); });
+                } catch (Exception e) { runOnUiThread(() -> android.widget.Toast.makeText(this, "Не удалось сохранить: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show()); }
+            });
+        } else if (rq == RQ_OPEN && rc == RESULT_OK && data != null && data.getData() != null) {
+            android.net.Uri u = data.getData();
+            io.execute(() -> {
+                try (java.io.InputStream is = getContentResolver().openInputStream(u)) {
+                    java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream(); byte[] buf = new byte[65536]; int n; long tot = 0;
+                    while ((n = is.read(buf)) > 0) { tot += n; if (tot > 200L * 1024 * 1024) throw new Exception("Файл слишком большой"); bo.write(buf, 0, n); }
+                    byte[] file = bo.toByteArray();
+                    runOnUiThread(() -> restoreDialog(file));
+                } catch (Exception e) { runOnUiThread(() -> android.widget.Toast.makeText(this, "Не удалось прочитать файл: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show()); }
+            });
+        }
+    }
+    private void restoreDialog(byte[] file) {
+        android.widget.EditText p1 = passField("Пароль копии");
+        TextView st = Site.label(this, "", 13f, Site.danger(this), 400);
+        TextView go = Site.button(this, "Восстановить");
+        com.google.android.material.bottomsheet.BottomSheetDialog d = Site.sheet(this, "Восстановить из файла", Site.caption(this, "Пароль"), p1, st, go);
+        go.setOnClickListener(v -> {
+            char[] pass = p1.getText().toString().toCharArray();
+            go.setEnabled(false); go.setText("Проверяю…"); st.setText("");
+            io.execute(() -> {
+                try {
+                    JSONObject o = BackupFile.read(file, pass, Api.get(this).uid()); // проверка целостности до любой записи
+                    JSONArray ms = o.getJSONArray("messages"); java.util.List<String[]> items = new java.util.ArrayList<>();
+                    for (int i = 0; i < ms.length(); i++) { String[] x = BackupFile.toCache(ms.optJSONObject(i)); if (x != null) items.add(x); }
+                    int n = E2e.get(this).importPlain(items);
+                    runOnUiThread(() -> { d.dismiss(); android.widget.Toast.makeText(this, "Восстановлено сообщений: " + n, android.widget.Toast.LENGTH_LONG).show(); });
+                } catch (BackupFile.BadPass e) {
+                    runOnUiThread(() -> { go.setEnabled(true); go.setText("Восстановить"); st.setText("Неверный пароль"); });
+                } catch (Exception e) {
+                    runOnUiThread(() -> { go.setEnabled(true); go.setText("Восстановить"); st.setText(e.getMessage()); });
+                } finally { java.util.Arrays.fill(pass, '\0'); }
+            });
+        });
+        d.show();
     }
 
     // ---------- Хранилище ----------
@@ -357,7 +477,7 @@ public class SettingsActivity extends AppCompatActivity {
                 btn.setOnClickListener(x -> io.execute(() -> {
                     java.io.File[] l = getCacheDir().listFiles();
                     if (l != null) for (java.io.File f : l) if (!f.getName().equals("updates")) rm(f);
-                    runOnUiThread(() -> { dd[0].dismiss(); Ui.toast(this, "Кэш очищен"); paintStorage(); });
+                    runOnUiThread(() -> { dd[0].dismiss(); android.widget.Toast.makeText(this, "Кэш очищен", android.widget.Toast.LENGTH_LONG).show(); paintStorage(); });
                 }));
                 dd[0] = Site.sheet(this, "Хранилище", Site.kv(this, "Всего занято приложением", Ui.size(all)), Site.kv(this, "Кэш файлов", Ui.size(cache)),
                         Site.kv(this, "Расшифрованные файлы / профили в памяти", Ui.size(files) + " / " + Avatars.profiles.size()),

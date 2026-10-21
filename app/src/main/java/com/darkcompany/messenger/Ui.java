@@ -304,7 +304,7 @@ final class Ui {
         b.setOrientation(LinearLayout.VERTICAL);
         b.setPadding(dp(c, 14), dp(c, 8), dp(c, 14), dp(c, 6));
         GradientDrawable g = new GradientDrawable();
-        float r = dp(c, 18), s = dp(c, 4);
+        float r = dp(c, 18), s = dp(c, 6);
         g.setCornerRadii(mine ? new float[]{r, r, r, r, s, s, r, r} : new float[]{r, r, r, r, r, r, s, s});
         g.setColor(attr(c, mine ? androidx.appcompat.R.attr.colorPrimary : com.google.android.material.R.attr.colorSurfaceContainerHigh));
         b.setBackground(g);

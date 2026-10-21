@@ -17,8 +17,8 @@ android {
         applicationId = "com.darkcompany.messenger.nativeapp"
         minSdk = 29
         targetSdk = 37
-        versionCode = 14
-        versionName = "14.0-native"
+        versionCode = 15
+        versionName = "15.0-native"
         // Метка сборки (время МСК) — видна в подзаголовке экрана «Чаты»
         buildConfigField("String", "BUILD_TIME", "\"$buildTime\"")
         buildConfigField("String", "UPDATE_REPO", "\"DarkAlmas/messenger-android\"")
@@ -86,6 +86,8 @@ dependencies {
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     // Официальный libsignal (X3DH/PQXDH + Double Ratchet)
     implementation("org.signal:libsignal-android:0.86.5")
+    // Argon2id для резервной копии (как hash-wasm на сайте)
+    implementation("org.bouncycastle:bcprov-jdk18on:1.80")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.16")

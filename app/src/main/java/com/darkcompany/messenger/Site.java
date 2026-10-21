@@ -123,14 +123,14 @@ final class Site {
     }
 
     static final int READ = 0xFF4FC3F7;
-    /** Пузырь .msg: радиус 18, «хвост» 4 у последнего в серии, отступы 8/14/6, фон in/out. */
-    /** .msg: padding 8 14 6, r18, «хвост» 4 (in — нижний левый, mine — нижний правый), max-width = ширина − 56, отступ между сообщениями 6;
+    /** Пузырь .msg: радиус 18, малый угол 6 у последнего в серии, отступы 8/14/6, фон in/out. */
+    /** .msg: padding 8 14 6, r18, малый угол 6 (in — нижний левый, mine — нижний правый), max-width = ширина − 56, отступ между сообщениями 6;
      *  .body 16px/21.6px, .foot 11px/14.85px. */
     static LinearLayout bubble(Context c, boolean mine, String who, CharSequence body, View extra, View meta, boolean tail) {
         LinearLayout b = new LinearLayout(c);
         b.setOrientation(LinearLayout.VERTICAL);
         b.setPadding(Ui.dp(c, 14), Ui.dp(c, 8), Ui.dp(c, 14), Ui.dp(c, 6));
-        float r = Ui.dp(c, 18), t = tail ? Ui.dp(c, 4) : r;
+        float r = Ui.dp(c, 18), t = tail ? Ui.dp(c, 6) : r;
         GradientDrawable g = new GradientDrawable();
         g.setCornerRadii(mine ? new float[]{r, r, r, r, t, t, r, r} : new float[]{r, r, r, r, r, r, t, t});
         g.setColor(col(c, mine ? R.color.site_out : R.color.site_in));

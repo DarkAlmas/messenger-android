@@ -19,7 +19,7 @@ final class MsgView {
     static int dp(Context c, float v) { return Math.round(v * c.getResources().getDisplayMetrics().density); }
     static float dpf(Context c, float v) { return v * c.getResources().getDisplayMetrics().density; }
 
-    /** Пузырь .msg с хвостиком (.tail::after, clip-path из CSS). */
+    /** Пузырь .msg (v15: без хвостика, малый угол 6dp у последнего в серии). */
     static final class Bubble extends LinearLayout {
         final boolean mine; boolean tail, plain; int color;
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -61,17 +61,11 @@ final class MsgView {
         @Override protected void onDraw(Canvas cv) {
             if (plain) return;
             Context c = getContext();
-            float w = getWidth(), h = getHeight(), r = dpf(c, 18), t = tail ? dpf(c, 4) : r;
+            // v15 (Design Bot): без хвостика — углы 18dp, у последнего пузыря серии малый угол 6dp (исх. — справа снизу, вход. — слева снизу)
+            float w = getWidth(), h = getHeight(), r = dpf(c, 18), t = tail ? dpf(c, 6) : r;
             path.reset();
             float[] rad = mine ? new float[]{r, r, r, r, t, t, r, r} : new float[]{r, r, r, r, r, r, t, t};
             path.addRoundRect(new RectF(0, 0, w, h), rad, Path.Direction.CW);
-            if (tail) { // clip-path: path("M10 0 V16 H0 C6 14 10 8 10 0 Z") слева -6; зеркально справа
-                float s = dpf(c, 1), y0 = h - 16 * s;
-                Path tp = new Path();
-                if (!mine) { float x0 = -6 * s; tp.moveTo(x0 + 10 * s, y0); tp.lineTo(x0 + 10 * s, y0 + 16 * s); tp.lineTo(x0, y0 + 16 * s); tp.cubicTo(x0 + 6 * s, y0 + 14 * s, x0 + 10 * s, y0 + 8 * s, x0 + 10 * s, y0); }
-                else { float x0 = w - 4 * s; tp.moveTo(x0, y0); tp.lineTo(x0, y0 + 16 * s); tp.lineTo(x0 + 10 * s, y0 + 16 * s); tp.cubicTo(x0 + 4 * s, y0 + 14 * s, x0, y0 + 8 * s, x0, y0); }
-                tp.close(); path.addPath(tp);
-            }
             p.setColor(color);
             cv.drawPath(path, p);
         }

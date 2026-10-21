@@ -403,6 +403,11 @@ public final class E2eCore {
         return out;
     }
 
+    /** importPlain сайта: кладёт записи копии в кэш pts, существующие не трогает. Возвращает число добавленных. */
+    public synchronized int importPlain(List<String[]> items) {
+        int n = 0; for (String[] x : items) { if (x == null || x[0] == null || store.kv.get("pts:" + x[0]) != null) continue; store.kv.put("pts:" + x[0], x[1]); n++; } return n;
+    }
+
     /** Запоминает открытый текст своего сообщения (свои сообщения себе не шифруются). */
     public void rememberOwn(String msgId, String plaintext) { store.kv.put("pts:" + msgId, plaintext); }
 
