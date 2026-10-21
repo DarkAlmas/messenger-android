@@ -211,7 +211,8 @@ public class ChatsActivity extends AppCompatActivity {
         String note = E2e.rebindNotice;
         if (note != null) { E2e.rebindNotice = null; runOnUiThread(() -> Ui.toast(this, note)); }
         if (ok) rebindAsked = false;
-        if (!ok && E2e.rebindBlocked) { runOnUiThread(this::askRebind); shownKeyErr = err; return; }
+        // v18: прежний сеанс ещё активен (RB002) — без диалога и тостов; повторяем rebind при каждом опросе/возврате, баннер в чате с «Исправить»
+        if (!ok && E2e.rebindBlocked) { shownKeyErr = err; return; }
         if (err != null && !err.equals(shownKeyErr)) Ui.toast(this, err + " Повторю автоматически.");
         shownKeyErr = err;
     }

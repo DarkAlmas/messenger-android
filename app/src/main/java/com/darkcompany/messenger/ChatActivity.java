@@ -135,7 +135,15 @@ public class ChatActivity extends AppCompatActivity {
             if ("direct".equals(kind) && e2e) showSafety();
             else if (isGroup() && e2e) { E2e.group(this).clearWarnings(chatId); updateBanner(); }
         });
-        root.addView(banner, new LinearLayout.LayoutParams(-1, -2));
+        // v18: «Не удалось подключить это устройство» + «Исправить» (повтор rebind_device)
+        bannerRow = new LinearLayout(this); bannerRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        bannerRow.addView(banner, new LinearLayout.LayoutParams(0, -2, 1f));
+        fixBtn = Ui.text(this, "Исправить", 14); fixBtn.setTypeface(null, android.graphics.Typeface.BOLD);
+        fixBtn.setTextColor(0xFFFFD27A); fixBtn.setPadding(Ui.dp(this, 12), Ui.dp(this, 10), Ui.dp(this, 16), Ui.dp(this, 10));
+        fixBtn.setVisibility(android.view.View.GONE);
+        fixBtn.setOnClickListener(v -> { fixBtn.setEnabled(false); fixBtn.setText("Подключаю…"); retryRebind(); });
+        bannerRow.addView(fixBtn);
+        root.addView(bannerRow, new LinearLayout.LayoutParams(-1, -2));
         updateBanner();
         checkE2e();
         scroll = new ScrollView(this);
@@ -359,6 +367,7 @@ public class ChatActivity extends AppCompatActivity {
     private LinearLayout recBar; private android.animation.ObjectAnimator recBlink;
     private RoundBox roundBox;
 
+    @Override protected void onResume() { super.onResume(); if (E2e.rebindBlocked && bannerRow != null) retryRebind(); } // v18: авто-повтор rebind
     @Override protected void onStart() {
         super.onStart(); if (chatId == null) return; running = true; openChat = chatId; Notify.cancel(this, chatId);
         rt = new Realtime(Api.get(this), chatId, isGroup(), () -> h.post(() -> { if (running) onRealtimeChange(); }),
@@ -791,7 +800,7 @@ public class ChatActivity extends AppCompatActivity {
                 lastSig = null; fetch();
             } catch (Exception e) {
                 boolean net = !online || e instanceof java.io.IOException && !(e instanceof Api.HttpError);
-                if (!net) { try { j.put("failed", true); } catch (Exception ignored) { } toast(Ui.err(e)); }
+                if (!net) { try { j.put("failed", true); } catch (Exception ignored) { } if (!E2e.rebindBlocked) toast(Ui.err(e)); } // v18: при «не удалось подключить» — только ⚠ у сообщения и баннер
                 saveOutbox();
                 lastSig = null; runOnUiThread(this::fetchOrRender);
                 if (e instanceof Api.AuthException) finish();
@@ -1203,8 +1212,21 @@ public class ChatActivity extends AppCompatActivity {
         }, "e2e-check").start();
     }
 
+    private LinearLayout bannerRow; private TextView fixBtn;
+    /** Повтор rebind_device (кнопка «Исправить», onResume): при успехе — обычная проверка шифрования. */
+    private void retryRebind() {
+        new Thread(() -> { E2e.ensureFresh(this, true); checkE2e(); runOnUiThread(() -> { if (fixBtn != null) { fixBtn.setEnabled(true); fixBtn.setText("Исправить"); } }); }, "rebind-retry").start();
+    }
     private void updateBanner() {
         if (banner == null) return;
+        boolean rb = e2eChecked && !e2e && selfFail && E2e.rebindBlocked && ("direct".equals(kind) || isGroup());
+        if (fixBtn != null) fixBtn.setVisibility(rb ? android.view.View.VISIBLE : android.view.View.GONE);
+        if (rb) {
+            banner.setText("Не удалось подключить это устройство"); banner.setSingleLine(true); banner.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            banner.setTextColor(0xFFFFD27A); banner.setBackgroundColor(0xFF3A3220); if (bannerRow != null) bannerRow.setBackgroundColor(0xFF3A3220);
+            return;
+        }
+        banner.setSingleLine(false); banner.setEllipsize(null);
         int bg, fg; String t;
         if (isGroup()) {
             java.util.List<String> w = e2eChecked && e2e ? E2e.group(this).warnings(chatId) : new java.util.ArrayList<>();
@@ -1224,7 +1246,7 @@ public class ChatActivity extends AppCompatActivity {
         } else if (peerErr != null) { t = "⚠ Не удалось проверить ключи собеседника: " + peerErr + ". Повторяю…"; bg = 0xFFFFE0B2; fg = 0xFFE65100;
         } else if (selfFail) { t = "⚠ " + selfErr() + " Отправка заблокирована."; bg = 0xFFFFE0B2; fg = 0xFFE65100;
         } else { t = "⚠ У собеседника сейчас нет устройства с ключами шифрования (заходил только с сайта/старой версии или вышел). Отправка заблокирована до его входа в приложение или обновлённый сайт — проверяю каждые 20 с: без шифрования личные сообщения не уходят. Входящие без шифрования помечены «⚠ не зашифровано»."; bg = 0xFFFFE0B2; fg = 0xFFE65100; }
-        banner.setText(t); banner.setBackgroundColor(bg); banner.setTextColor(fg);
+        banner.setText(t); banner.setBackgroundColor(bg); banner.setTextColor(fg); if (bannerRow != null) bannerRow.setBackgroundColor(bg);
     }
 
     @Override public boolean onCreateOptionsMenu(android.view.Menu menu) {
