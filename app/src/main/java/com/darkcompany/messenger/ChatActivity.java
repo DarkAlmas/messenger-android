@@ -141,7 +141,7 @@ public class ChatActivity extends AppCompatActivity {
         fixBtn = Ui.text(this, "Исправить", 14); fixBtn.setTypeface(null, android.graphics.Typeface.BOLD);
         fixBtn.setTextColor(0xFFFFD27A); fixBtn.setPadding(Ui.dp(this, 12), Ui.dp(this, 10), Ui.dp(this, 16), Ui.dp(this, 10));
         fixBtn.setVisibility(android.view.View.GONE);
-        fixBtn.setOnClickListener(v -> { fixBtn.setEnabled(false); fixBtn.setText("Подключаю…"); retryRebind(); });
+        fixBtn.setOnClickListener(v -> { if (keyMode) { showSafety(); return; } fixBtn.setEnabled(false); fixBtn.setText("Подключаю…"); retryRebind(); });
         bannerRow.addView(fixBtn);
         root.addView(bannerRow, new LinearLayout.LayoutParams(-1, -2));
         updateBanner();
@@ -800,12 +800,19 @@ public class ChatActivity extends AppCompatActivity {
                 lastSig = null; fetch();
             } catch (Exception e) {
                 boolean net = !online || e instanceof java.io.IOException && !(e instanceof Api.HttpError);
-                if (!net) { try { j.put("failed", true); } catch (Exception ignored) { } if (!E2e.rebindBlocked) toast(Ui.err(e)); } // v18: при «не удалось подключить» — только ⚠ у сообщения и баннер
+                if (!net) { try { j.put("failed", true); } catch (Exception ignored) { } if (!E2e.rebindBlocked && !(peerId != null && E2e.get(this).hasPendingChange(peerId))) toast(Ui.err(e)); } // v18: при «не удалось подключить» — только ⚠ у сообщения и баннер
                 saveOutbox();
                 lastSig = null; runOnUiThread(this::fetchOrRender);
                 if (e instanceof Api.AuthException) finish();
             } finally { running0.remove(id); }
         });
+    }
+    /** v19: после принятия ключа — повторить неотправленные. */
+    private void retryFailed() {
+        java.util.List<JSONObject> js = new java.util.ArrayList<>();
+        synchronized (outbox) { for (JSONObject j : outbox.values()) if (j.optBoolean("failed")) js.add(j); }
+        for (JSONObject j : js) { j.remove("failed"); outRun(j); }
+        saveOutbox(); lastSig = null; fetchOrRender();
     }
     private void failedMenu(String id) {
         JSONObject j; synchronized (outbox) { j = outbox.get(id); }
@@ -1212,7 +1219,7 @@ public class ChatActivity extends AppCompatActivity {
         }, "e2e-check").start();
     }
 
-    private LinearLayout bannerRow; private TextView fixBtn;
+    private LinearLayout bannerRow; private TextView fixBtn; private boolean keyMode;
     /** Повтор rebind_device (кнопка «Исправить», onResume): при успехе — обычная проверка шифрования. */
     private void retryRebind() {
         new Thread(() -> { E2e.ensureFresh(this, true); checkE2e(); runOnUiThread(() -> { if (fixBtn != null) { fixBtn.setEnabled(true); fixBtn.setText("Исправить"); } }); }, "rebind-retry").start();
@@ -1220,9 +1227,11 @@ public class ChatActivity extends AppCompatActivity {
     private void updateBanner() {
         if (banner == null) return;
         boolean rb = e2eChecked && !e2e && selfFail && E2e.rebindBlocked && ("direct".equals(kind) || isGroup());
-        if (fixBtn != null) fixBtn.setVisibility(rb ? android.view.View.VISIBLE : android.view.View.GONE);
-        if (rb) {
-            banner.setText("Не удалось подключить это устройство"); banner.setSingleLine(true); banner.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        // v19: ключ собеседника изменился — одна строка + «Сверить» (экран кода с «Принять новый ключ»); отправка заблокирована до принятия
+        keyMode = !rb && "direct".equals(kind) && e2eChecked && e2e && peerId != null && E2e.get(this).hasPendingChange(peerId);
+        if (fixBtn != null) { fixBtn.setVisibility(rb || keyMode ? android.view.View.VISIBLE : android.view.View.GONE); if (fixBtn.isEnabled()) fixBtn.setText(keyMode ? "Сверить" : "Исправить"); }
+        if (rb || keyMode) {
+            banner.setText(keyMode ? "Ключ " + peerName(peerId) + " изменился" : "Не удалось подключить это устройство"); banner.setSingleLine(true); banner.setEllipsize(android.text.TextUtils.TruncateAt.END);
             banner.setTextColor(0xFFFFD27A); banner.setBackgroundColor(0xFF3A3220); if (bannerRow != null) bannerRow.setBackgroundColor(0xFF3A3220);
             return;
         }
@@ -1295,9 +1304,18 @@ public class ChatActivity extends AppCompatActivity {
                     }
                     if (nums.isEmpty()) col.addView(Ui.text(this, "Нет ключей собеседника.", 14));
                     ScrollView sv = new ScrollView(this); sv.addView(col);
+                    boolean pend = E2e.get(this).hasPendingChange(peerId);
+                    if (pend) col.addView(Ui.text(this, "Ключ " + peerName(peerId) + " изменился — обычно это новый телефон или переустановка приложения. Сверьте код или спросите собеседника, затем примите новый ключ. До этого сообщения не отправляются.", 14), 1);
+                    androidx.appcompat.app.AlertDialog[] dlg = new androidx.appcompat.app.AlertDialog[1];
+                    if (pend) { // v19: явная большая кнопка — раньше была только малозаметная нейтральная
+                        TextView acc = Site.button(this, "Принять новый ключ");
+                        LinearLayout.LayoutParams al = new LinearLayout.LayoutParams(-1, -2); al.topMargin = Ui.dp(this, 16); al.bottomMargin = Ui.dp(this, 8);
+                        acc.setOnClickListener(v -> { if (dlg[0] != null) dlg[0].dismiss(); confirmAccept(); });
+                        col.addView(acc, al);
+                    }
                     com.google.android.material.dialog.MaterialAlertDialogBuilder bd = new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
                             .setTitle("Код безопасности").setView(sv)
-                            .setPositiveButton("Сканировать QR собеседника", (dd, w) -> {
+                            .setPositiveButton("Сканировать QR", (dd, w) -> {
                                 com.journeyapps.barcodescanner.ScanOptions o = new com.journeyapps.barcodescanner.ScanOptions();
                                 o.setDesiredBarcodeFormats(com.journeyapps.barcodescanner.ScanOptions.QR_CODE);
                                 o.setPrompt("Наведите на код безопасности собеседника");
@@ -1305,8 +1323,7 @@ public class ChatActivity extends AppCompatActivity {
                                 safetyScan.launch(o);
                             })
                             .setNegativeButton("Закрыть", null);
-                    if (E2e.get(this).hasPendingChange(peerId)) bd.setNeutralButton("Принять новый ключ", (dd, w) -> confirmAccept());
-                    bd.show();
+                    dlg[0] = bd.show();
                 });
             } catch (Exception e) { toast("Код безопасности недоступен: " + Ui.err(e)); }
         }, "safety").start();
@@ -1316,7 +1333,7 @@ public class ChatActivity extends AppCompatActivity {
         new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
                 .setTitle("Принять новый ключ?")
                 .setMessage("Делайте это, только если собеседник подтвердил, что сменил телефон или переустановил приложение. Надёжнее — сначала сверить QR.")
-                .setPositiveButton("Принять", (d, w) -> { E2e.get(this).acceptKeys(peerId); updateBanner(); })
+                .setPositiveButton("Принять", (d, w) -> { E2e.get(this).acceptKeys(peerId); updateBanner(); retryFailed(); })
                 .setNegativeButton("Отмена", null).show();
     }
 

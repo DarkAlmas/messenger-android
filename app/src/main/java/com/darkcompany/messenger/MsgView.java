@@ -112,7 +112,7 @@ final class MsgView {
         if (lock != null) { TextView l = Site.label(c, lock, 11f, lock.startsWith("⚠") ? (mine ? 0xFFFFE08A : Site.col(c, R.color.web_color_warning)) : mc, 400); items.add(l); }
         items.add(Site.label(c, time, 11f, mc, 400));
         if (tick > 0) {
-            String ic = tick == 4 ? "schedule" : tick == 5 ? "error" : tick == 1 ? "done" : "done_all";
+            String ic = tick == 4 ? "schedule" : tick == 5 ? "warning" : tick == 1 ? "done" : "done_all";
             TextView t = Site.icon(c, ic, 16, tick == 3 ? Site.READ : tick == 5 ? Site.col(c, R.color.site_danger) : mc);
             if (tick != 3 && tick != 5 && !onMedia) t.setAlpha(mine ? .75f : 1f);
             t.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
