@@ -555,12 +555,11 @@ public class ChatsActivity extends AppCompatActivity {
         runOnUiThread(() -> {
             if (isFinishing()) return;
             android.widget.EditText p = Site.input(this, "Пароль копии");
-            p.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
             android.widget.TextView st = Site.label(this, "", 13f, Site.danger(this), 400);
             android.widget.TextView go = Site.button(this, "Восстановить"), skip = Site.label(this, "Пропустить", 16f, Site.primary(this), 500);
             skip.setGravity(android.view.Gravity.CENTER); skip.setMinHeight(Ui.dp(this, 46));
             com.google.android.material.bottomsheet.BottomSheetDialog d = Site.sheet(this, "Резервная копия",
-                    Site.label(this, "Найдена копия от " + day + ". Введите пароль, чтобы вернуть переписку", 15f, Site.text(this), 400), p, st, go, skip,
+                    Site.label(this, "Найдена копия от " + day + ". Введите пароль, чтобы вернуть переписку", 15f, Site.text(this), 400), Site.passBox(this, p), st, go, skip,
                     Site.label(this, SettingsActivity.CAPTION, 13f, Site.text2(this), 400));
             skip.setOnClickListener(v -> { CloudBackup.sp(this).edit().putBoolean("asked:" + uid, true).apply(); d.dismiss(); });
             go.setOnClickListener(v -> {

@@ -358,7 +358,7 @@ public class SettingsActivity extends AppCompatActivity {
             now.setEnabled(false); now.setText("Сохраняю…");
             io.execute(() -> {
                 String err = null; boolean ok = false;
-                try { ok = CloudBackup.nowWithStoredKey(this); } catch (Exception e) { err = e.getMessage(); }
+                try { ok = CloudBackup.nowWithStoredKey(this, askSmaller); } catch (Exception e) { err = e.getMessage(); }
                 final boolean fok = ok; final String ferr = err;
                 runOnUiThread(() -> { now.setEnabled(true); now.setText("Сохранить сейчас");
                     if (fok) { top.setText(backupLine(this)); Ui.toast(this, "Копия сохранена"); loadBackup(); }
@@ -368,41 +368,67 @@ public class SettingsActivity extends AppCompatActivity {
         });
         d.show();
     }
-    private android.widget.EditText passField(String hint) {
-        android.widget.EditText e = Site.input(this, hint);
-        e.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        e.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
-        return e;
-    }
-    /** Пароль копии → ключ Argon2id → копия на сервер. auto: включение автокопии — ключ сохраняется обёрнутым Keystore. */
+    /** Ручная копия: в копии на сервере больше сообщений — спросить (блокирует фоновый поток до ответа). */
+    private final CloudBackup.Smaller askSmaller = (old, nw) -> {
+        java.util.concurrent.CountDownLatch l = new java.util.concurrent.CountDownLatch(1); boolean[] ok = {false};
+        runOnUiThread(() -> new MaterialAlertDialogBuilder(this).setTitle("Заменить копию?")
+                .setMessage("В копии на сервере " + old + " сообщ., а на этом устройстве только " + nw + ". Сначала лучше восстановить прежнюю копию. Всё равно заменить?")
+                .setNegativeButton("Отмена", null).setPositiveButton("Заменить", (x, y) -> ok[0] = true)
+                .setOnDismissListener(x -> l.countDown()).show());
+        try { l.await(); } catch (InterruptedException ignored) { }
+        return ok[0];
+    };
+    /** Пароль копии → ключ → копия на сервер. Есть копия — одно поле; первая — пароль дважды и подсказка. */
     private void passDialog(boolean auto, java.util.function.Consumer<Boolean> done) {
+        io.execute(() -> {
+            JSONObject row = null; try { row = CloudBackup.row(this); } catch (Exception ignored) { }
+            final JSONObject frow = row;
+            runOnUiThread(() -> passDialog(auto, frow, false, done));
+        });
+    }
+    private void passDialog(boolean auto, JSONObject row, boolean fresh, java.util.function.Consumer<Boolean> done) {
+        boolean first = row == null || fresh;
         boolean[] fin = {false};
-        android.widget.EditText p1 = passField("Пароль копии"), p2 = passField("Повторите пароль");
+        android.widget.EditText p1 = Site.input(this, fresh ? "Новый пароль копии" : "Пароль копии"), p2 = Site.input(this, "Повторите пароль");
+        TextView hint = Site.label(this, "Не меньше " + BackupFile.MIN_PASS + " символов", 13f, Site.text2(this), 400);
         TextView st = Site.label(this, "", 13f, Site.danger(this), 400);
-        TextView go = Site.button(this, auto ? "Включить" : "Сохранить сейчас");
-        com.google.android.material.bottomsheet.BottomSheetDialog d = Site.sheet(this, auto ? "Автокопия" : "Резервная копия",
-                Site.caption(this, "Пароль (минимум " + BackupFile.MIN_PASS + " символов; если копия уже есть — тот же, что на сайте)"), p1, p2, st, go,
-                Site.label(this, CAPTION, 13f, Site.text2(this), 400));
+        TextView forgot = Site.label(this, "Забыли пароль? Создать новую копию", 15f, Site.danger(this), 500);
+        forgot.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8)); forgot.setVisibility(View.GONE);
+        String btn = auto ? "Включить" : "Сохранить сейчас";
+        TextView go = Site.button(this, btn);
+        java.util.List<View> vs = new java.util.ArrayList<>();
+        vs.add(Site.passBox(this, p1)); if (first) { vs.add(hint); vs.add(Site.passBox(this, p2)); }
+        vs.add(st); vs.add(forgot); vs.add(go);
+        com.google.android.material.bottomsheet.BottomSheetDialog d = Site.sheet(this, fresh ? "Новая копия" : auto ? "Автокопия" : "Резервная копия", vs.toArray(new View[0]));
         d.setOnDismissListener(x -> { if (!fin[0]) done.accept(false); });
+        forgot.setOnClickListener(v -> {
+            String when = new java.text.SimpleDateFormat("dd.MM", java.util.Locale.US).format(new java.util.Date(Ui.instant(row.optString("updated_at"))));
+            androidx.appcompat.app.AlertDialog a = new MaterialAlertDialogBuilder(this).setTitle("Создать новую копию?")
+                    .setMessage("Старая копия от " + when + " (" + Ui.size(row.optLong("size_bytes")) + ") будет удалена. Сообщения, которых нет на этом устройстве, восстановить не получится")
+                    .setNegativeButton("Отмена", null)
+                    .setPositiveButton("Удалить и создать", (x, y) -> { fin[0] = true; d.dismiss(); passDialog(auto, row, true, done); }).show();
+            a.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setTextColor(Site.danger(this));
+        });
         go.setOnClickListener(v -> {
             String a = p1.getText().toString(), b = p2.getText().toString();
-            if (a.length() < BackupFile.MIN_PASS) { st.setText("Минимум " + BackupFile.MIN_PASS + " символов"); return; }
-            if (!a.equals(b)) { st.setText("Пароли не совпадают"); return; }
+            if (first && a.length() < BackupFile.MIN_PASS) { st.setText("Не меньше " + BackupFile.MIN_PASS + " символов"); return; }
+            if (first && !a.equals(b)) { st.setText("Пароли не совпадают"); return; }
+            if (a.isEmpty()) { st.setText("Введите пароль копии"); return; }
             char[] pass = a.toCharArray(); p1.setText(""); p2.setText("");
-            go.setEnabled(false); go.setText("Сохраняю…"); st.setText("");
+            go.setEnabled(false); go.setText("Сохраняю…"); st.setText(""); forgot.setVisibility(View.GONE);
             io.execute(() -> {
                 byte[] key = null;
                 try {
-                    JSONObject row = CloudBackup.row(this);
-                    Object[] k = CloudBackup.derive(this, pass); key = (byte[]) k[0];
-                    if (row != null) CloudBackup.verify(this, row, key); // существующая копия: пароль должен подходить, иначе не перезаписываем
-                    CloudBackup.create(this, key, (String) k[1], (JSONObject) k[2], n -> runOnUiThread(() -> go.setText("Сообщений: " + n)));
-                    if (auto) CloudBackup.storeKey(this, key, (String) k[1], (JSONObject) k[2]);
+                    Object[] k = CloudBackup.derive(this, pass, fresh); key = (byte[]) k[0];
+                    int n = CloudBackup.create(this, key, (String) k[1], (JSONObject) k[2], c -> runOnUiThread(() -> go.setText("Сообщений: " + c)), askSmaller, fresh);
+                    if (n == CloudBackup.SKIPPED) { runOnUiThread(() -> { go.setEnabled(true); go.setText(btn); st.setText("Отменено"); }); return; }
+                    if (auto || CloudBackup.hasKey(this)) CloudBackup.storeKey(this, key, (String) k[1], (JSONObject) k[2]);
+                    if (fresh) CloudBackup.markReady(this); // новая копия: старой больше нет — восстанавливать нечего
                     runOnUiThread(() -> { fin[0] = true; d.dismiss(); done.accept(true); Ui.toast(this, "Копия сохранена"); loadBackup(); });
                 } catch (BackupFile.BadPass e) {
-                    runOnUiThread(() -> { go.setEnabled(true); go.setText(auto ? "Включить" : "Сохранить сейчас"); st.setText("Неверный пароль: на сервере уже есть копия с другим паролем"); });
+                    runOnUiThread(() -> { go.setEnabled(true); go.setText(btn); st.setText("Неверный пароль"); if (row != null && !fresh) forgot.setVisibility(View.VISIBLE); });
                 } catch (Exception e) {
-                    runOnUiThread(() -> { go.setEnabled(true); go.setText(auto ? "Включить" : "Сохранить сейчас"); st.setText("Не удалось: " + e.getMessage()); });
+                    runOnUiThread(() -> { go.setEnabled(true); go.setText(btn); st.setText("Не удалось: " + e.getMessage()); });
                 } finally { java.util.Arrays.fill(pass, '\0'); if (key != null) java.util.Arrays.fill(key, (byte) 0); }
             });
         });

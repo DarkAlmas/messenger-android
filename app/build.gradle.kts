@@ -17,8 +17,8 @@ android {
         applicationId = "com.darkcompany.messenger.nativeapp"
         minSdk = 29
         targetSdk = 37
-        versionCode = 16
-        versionName = "16.0-native"
+        versionCode = 17
+        versionName = "17.0-native"
         // Метка сборки (время МСК) — видна в подзаголовке экрана «Чаты»
         buildConfigField("String", "BUILD_TIME", "\"$buildTime\"")
         buildConfigField("String", "UPDATE_REPO", "\"DarkAlmas/messenger-android\"")

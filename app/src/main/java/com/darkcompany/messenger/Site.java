@@ -580,4 +580,22 @@ final class Site {
         b.setClickable(true); b.setFocusable(true); b.setContentDescription("Войти через Google");
         return b;
     }
+    /** v17: поле пароля с «глазом» (показать/скрыть). */
+    static LinearLayout passBox(Context c, android.widget.EditText e) {
+        e.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        e.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
+        LinearLayout l = new LinearLayout(c); l.setGravity(Gravity.CENTER_VERTICAL);
+        l.addView(e, new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView eye = icon(c, "visibility", 24, text2(c));
+        eye.setContentDescription("Показать пароль"); eye.setPadding(Ui.dp(c, 10), Ui.dp(c, 10), Ui.dp(c, 4), Ui.dp(c, 10));
+        eye.setOnClickListener(v -> {
+            boolean shown = !(e.getTransformationMethod() instanceof android.text.method.PasswordTransformationMethod);
+            int sel = e.getSelectionEnd();
+            e.setTransformationMethod(shown ? android.text.method.PasswordTransformationMethod.getInstance() : android.text.method.HideReturnsTransformationMethod.getInstance());
+            eye.setText(shown ? "visibility" : "visibility_off"); eye.setContentDescription(shown ? "Показать пароль" : "Скрыть пароль");
+            if (sel >= 0) e.setSelection(sel);
+        });
+        l.addView(eye);
+        return l;
+    }
 }
