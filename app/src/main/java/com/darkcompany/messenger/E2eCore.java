@@ -315,8 +315,10 @@ public final class E2eCore {
                 if (first) trust.put(dev, ik);
                 else if (!ik.equals(trust.optString(dev, null))) pending.put(dev, ik);
             }
+            // v21: устройство с неподтверждённым ключом вышло/отключено («Это не я» → завершить сеанс) — ожидание снимаем
+            for (Iterator<String> it = pending.keys(); it.hasNext(); ) { if (!valid.containsKey(it.next())) it.remove(); }
             store.kv.put("trust:" + user, trust.toString());
-            if (pending.length() > 0) store.kv.put("pending:" + user, pending.toString());
+            if (pending.length() > 0) store.kv.put("pending:" + user, pending.toString()); else store.kv.remove("pending:" + user);
             // Строим сессии с доверенными устройствами без сессии
             for (Map.Entry<String, JSONObject> e : valid.entrySet()) {
                 String dev = e.getKey();
@@ -343,6 +345,8 @@ public final class E2eCore {
     /** Сбросить кэш claim, чтобы при следующей отправке заново запросить устройства. */
     public synchronized void forgetClaims(String user) { claimedAt.remove(user); }
 
+    /** v21: id устройств с неподтверждённым ключом. */
+    public List<String> pendingDevices(String user) { List<String> o = new ArrayList<>(); for (Iterator<String> it = jget("pending:" + user).keys(); it.hasNext(); ) o.add(it.next()); return o; }
     public boolean hasPendingChange(String user) { return store.kv.get("pending:" + user) != null; }
 
     /** Пользователь принял новые ключи (после проверки кода безопасности). */

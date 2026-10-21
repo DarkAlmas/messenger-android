@@ -141,8 +141,12 @@ public class ChatActivity extends AppCompatActivity {
         fixBtn = Ui.text(this, "Исправить", 14); fixBtn.setTypeface(null, android.graphics.Typeface.BOLD);
         fixBtn.setTextColor(0xFFFFD27A); fixBtn.setPadding(Ui.dp(this, 12), Ui.dp(this, 10), Ui.dp(this, 16), Ui.dp(this, 10));
         fixBtn.setVisibility(android.view.View.GONE);
-        fixBtn.setOnClickListener(v -> { if (keyMode) { showSafety(); return; } fixBtn.setEnabled(false); fixBtn.setText("Подключаю…"); retryRebind(); });
+        fixBtn.setOnClickListener(v -> { if (keyMode && ownMode) { confirmAccept(Api.get(this).uid()); return; } if (keyMode) { showSafety(); return; } fixBtn.setEnabled(false); fixBtn.setText("Подключаю…"); retryRebind(); });
         bannerRow.addView(fixBtn);
+        notMe = Ui.text(this, "Это не я", 14); notMe.setTextColor(0xFFFF6B6B);
+        notMe.setPadding(Ui.dp(this, 4), Ui.dp(this, 10), Ui.dp(this, 16), Ui.dp(this, 10)); notMe.setVisibility(android.view.View.GONE);
+        notMe.setOnClickListener(v -> notMeDialog());
+        bannerRow.addView(notMe);
         root.addView(bannerRow, new LinearLayout.LayoutParams(-1, -2));
         updateBanner();
         checkE2e();
@@ -1219,7 +1223,7 @@ public class ChatActivity extends AppCompatActivity {
         }, "e2e-check").start();
     }
 
-    private LinearLayout bannerRow; private TextView fixBtn; private boolean keyMode;
+    private LinearLayout bannerRow; private TextView fixBtn, notMe; private boolean keyMode, ownMode; private volatile String ownInfo, ownDev; private volatile boolean ownInfoLoading;
     /** Повтор rebind_device (кнопка «Исправить», onResume): при успехе — обычная проверка шифрования. */
     private void retryRebind() {
         new Thread(() -> { E2e.ensureFresh(this, true); checkE2e(); runOnUiThread(() -> { if (fixBtn != null) { fixBtn.setEnabled(true); fixBtn.setText("Исправить"); } }); }, "rebind-retry").start();
@@ -1232,16 +1236,65 @@ public class ChatActivity extends AppCompatActivity {
         String me = Api.get(this).uid();
         return c.hasPendingChange(me) ? me : null;
     }
+    /** v21: «сайт · Android 10» / «приложение · CPH2603», «сегодня|dd.MM HH:mm» — из list_devices по id неподтверждённого устройства. */
+    private void loadOwnInfo() {
+        if (ownInfoLoading) return; ownInfoLoading = true;
+        new Thread(() -> {
+            try {
+                java.util.List<String> pd = E2e.get(this).pendingDevices(Api.get(this).uid());
+                JSONArray a = new JSONArray(Api.get(this).rpc("list_devices", new JSONObject()));
+                JSONObject best = null;
+                for (int i = 0; i < a.length(); i++) { JSONObject d = a.getJSONObject(i); if (pd.contains(d.optString("id")) && (best == null || d.optString("created_at").compareTo(best.optString("created_at")) > 0)) best = d; }
+                if (best != null) {
+                    ownDev = best.optString("id");
+                    String ua = best.optString("user_agent", ""), kind = ua.startsWith("okhttp") || ua.startsWith("Dalvik") ? "приложение" : "сайт", model = "";
+                    java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\((?:Linux; )?(?:U; )?(Android [0-9.]+)(?:; ([^;)]+?))?(?: Build[^;)]*)?[;)]").matcher(ua);
+                    if (m.find()) model = m.group(2) != null && !m.group(2).equals("K") ? m.group(2).trim() : m.group(1);
+                    else if (ua.contains("Windows")) model = "Windows"; else if (ua.contains("iPhone")) model = "iPhone"; else if (ua.contains("Mac OS")) model = "Mac";
+                    long t = Ui.instant(best.optString("created_at"));
+                    java.util.Calendar c1 = java.util.Calendar.getInstance(), c2 = java.util.Calendar.getInstance(); c2.setTimeInMillis(t);
+                    String day = c1.get(java.util.Calendar.YEAR) == c2.get(java.util.Calendar.YEAR) && c1.get(java.util.Calendar.DAY_OF_YEAR) == c2.get(java.util.Calendar.DAY_OF_YEAR) ? "сегодня" : new java.text.SimpleDateFormat("dd.MM", java.util.Locale.US).format(new java.util.Date(t));
+                    ownInfo = kind + (model.isEmpty() ? "" : " · " + model) + ", " + day + " " + new java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(new java.util.Date(t));
+                    runOnUiThread(this::updateBanner);
+                }
+            } catch (Exception ignored) { } finally { ownInfoLoading = false; }
+        }, "own-info").start();
+    }
+    /** «Это не я»: сменить пароль и завершить тот сеанс (revoke_device). */
+    private void notMeDialog() {
+        String[] items = ownDev != null ? new String[]{"Завершить этот сеанс", "Сменить пароль"} : new String[]{"Сменить пароль"};
+        new com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle("Это были не вы?")
+                .setItems(items, (d, w) -> {
+                    if (ownDev != null && w == 0) {
+                        androidx.appcompat.app.AlertDialog a = new com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle("Завершить сеанс?")
+                                .setMessage("Устройство " + (ownInfo != null ? "«" + ownInfo + "» " : "") + "будет отключено от аккаунта, его ключ не будет принят. Затем смените пароль.")
+                                .setNegativeButton("Отмена", null)
+                                .setPositiveButton("Завершить", (x, y) -> new Thread(() -> {
+                                    try {
+                                        Api.get(this).rpc("revoke_device", new JSONObject().put("p_session_id", ownDev));
+                                        E2e.get(this).forgetClaims(Api.get(this).uid());
+                                        runOnUiThread(() -> { toast("Сеанс завершён"); ownInfo = null; ownDev = null; checkE2e();
+                                            startActivity(new android.content.Intent(this, NewPasswordActivity.class)); });
+                                    } catch (Exception e) { toast("Не удалось завершить сеанс: " + Ui.err(e)); }
+                                }, "revoke").start()).show();
+                        a.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setTextColor(Site.danger(this));
+                    } else startActivity(new android.content.Intent(this, NewPasswordActivity.class));
+                }).setNegativeButton("Отмена", null).show();
+    }
     private String pendingTitle() {
         String u = pendingUser();
-        return u != null && u.equals(Api.get(this).uid()) ? "Ключ вашего устройства изменился" : "Ключ " + peerName(peerId) + " изменился";
+        if (u != null && u.equals(Api.get(this).uid())) return ownInfo != null ? "Новый вход в ваш аккаунт: " + ownInfo : "Новый вход в ваш аккаунт";
+        return "Ключ " + peerName(peerId) + " изменился";
     }
     private void updateBanner() {
         if (banner == null) return;
         boolean rb = e2eChecked && !e2e && selfFail && E2e.rebindBlocked && ("direct".equals(kind) || isGroup());
         // v19: ключ собеседника изменился — одна строка + «Сверить» (экран кода с «Принять новый ключ»); отправка заблокирована до принятия
         keyMode = !rb && "direct".equals(kind) && e2eChecked && e2e && pendingUser() != null;
-        if (fixBtn != null) { fixBtn.setVisibility(rb || keyMode ? android.view.View.VISIBLE : android.view.View.GONE); if (fixBtn.isEnabled()) fixBtn.setText(keyMode ? "Сверить" : "Исправить"); }
+        ownMode = keyMode && Api.get(this).uid().equals(pendingUser());
+        if (ownMode && ownInfo == null) loadOwnInfo();
+        if (fixBtn != null) { fixBtn.setVisibility(rb || keyMode ? android.view.View.VISIBLE : android.view.View.GONE); if (fixBtn.isEnabled()) fixBtn.setText(ownMode ? "Это я" : keyMode ? "Сверить" : "Исправить"); }
+        if (notMe != null) notMe.setVisibility(ownMode ? android.view.View.VISIBLE : android.view.View.GONE);
         if (rb || keyMode) {
             banner.setText(keyMode ? pendingTitle() : "Не удалось подключить это устройство"); banner.setSingleLine(true); banner.setEllipsize(android.text.TextUtils.TruncateAt.END);
             banner.setTextColor(0xFFFFD27A); banner.setBackgroundColor(0xFF3A3220); if (bannerRow != null) bannerRow.setBackgroundColor(0xFF3A3220);
